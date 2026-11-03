@@ -309,9 +309,11 @@ jobs:
               echo "+memory +cpu" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null || true
               echo "$emu_mem" | sudo tee /sys/fs/cgroup/fork-shape/memory.max >/dev/null
               echo "$worker_pid" | sudo tee /sys/fs/cgroup/fork-shape/cgroup.procs >/dev/null
-              mkdir -p "$RUNNER_TEMP/fork-shape"
-              printf '%s\n' "const os = require('node:os');" "os.totalmem = () => $emu_mem;" "require('node:module').syncBuiltinESMExports();" > "$RUNNER_TEMP/fork-shape/preload.cjs"
-              echo "NODE_OPTIONS=--require=$RUNNER_TEMP/fork-shape/preload.cjs${NODE_OPTIONS:+ $NODE_OPTIONS}" >> "$GITHUB_ENV"
+              awk -v t="$((emu_mem / 1024))" '
+                /^MemTotal:/ {printf "MemTotal:       %d kB\n", t; next}
+                /^MemFree:/ || /^MemAvailable:/ {printf "%-16s%d kB\n", $1, t*9/10; next}
+                {print}' /proc/meminfo > "$RUNNER_TEMP/fork-shape-meminfo"
+              sudo mount --bind "$RUNNER_TEMP/fork-shape-meminfo" /proc/meminfo
               touch "$RUNNER_TEMP/.fork-shape"
               echo "fork-shape: label=${BASH_REMATCH[1]}vcpu emulated cpus=$emu_cpus mem=$emu_mem worker=$worker_pid"
             fi
