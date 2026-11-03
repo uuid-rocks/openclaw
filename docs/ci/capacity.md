@@ -1010,3 +1010,5 @@ Control UI E2E shards, QA Smoke, real-Gateway checks, and Android retain their e
 
 - [Install overview](/install)
 - [Release channels](/install/development-channels)
+
+<!-- ci-speedup marker -->

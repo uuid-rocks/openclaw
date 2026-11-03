@@ -1661,3 +1661,4 @@ describe("CI changed Node test plan", () => {
     ).toEqual([expect.objectContaining({ configs: ["test/vitest/vitest.boundary.config.ts"] })]);
   });
 });
+// ci-speedup marker

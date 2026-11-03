@@ -485,3 +485,4 @@ if (process.argv.includes('.git/worktrees/pr-42') && existsSync(marker) &&
     },
   );
 });
+// ci-speedup marker

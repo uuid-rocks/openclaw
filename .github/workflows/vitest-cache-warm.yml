@@ -268,3 +268,4 @@ jobs:
             echo "::error::Vitest cache warming failed"
             exit 1
           fi
+# ci-speedup marker

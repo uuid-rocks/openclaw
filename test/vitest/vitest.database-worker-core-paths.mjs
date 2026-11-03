@@ -1506,3 +1506,4 @@ export const DATABASE_WORKER_WATCH_TESTS_ENV_KEY = "OPENCLAW_VITEST_DATABASE_WOR
 export function isDatabaseWorkerCoreTestFile(file) {
   return databaseWorkerCoreTestFileSet.has(file.replaceAll("\\", "/"));
 }
+// ci-speedup marker

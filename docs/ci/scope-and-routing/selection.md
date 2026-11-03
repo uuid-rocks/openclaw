@@ -283,3 +283,5 @@ files when their owners select them; YAML action-pinning checks retain their
 original guard owner. The Node planner tests separately assert that hourly main
 and Full Release Validation retain moved PR-exempt files, while the existing
 named process-proof exclusions remain outside ordinary PR execution.
+
+<!-- ci-speedup marker -->

@@ -532,3 +532,4 @@ if (isDirectRunUrl(process.argv[1], import.meta.url)) {
     }
   });
 }
+// ci-speedup marker

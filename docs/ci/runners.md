@@ -572,3 +572,5 @@ gh variable delete OPENCLAW_CI_RUNNER_BACKEND --repo openclaw/openclaw
 
 - [Install overview](/install)
 - [Release channels](/install/development-channels)
+
+<!-- ci-speedup marker -->

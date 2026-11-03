@@ -718,3 +718,4 @@ if __name__ == "__main__":
         except BaseException:
             pass
     raise SystemExit(exit_code)
+# ci-speedup marker
