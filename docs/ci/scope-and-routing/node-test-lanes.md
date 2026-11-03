@@ -111,6 +111,11 @@ seconds into the remaining rows while preserving every selected target. Plans
 that cannot fit those separate policies or whose other owners already fill the
 cap still fail preflight.
 
+When two or more `pr-worktree-provision` test files are selected, they share one
+changed-target row on `blacksmith-32vcpu-ubuntu-2404`. Each file is a serial
+chain of cold provisioner processes; only that class passes the shard runner's
+8-CPU/24-GiB check for running two target children at once.
+
 Explicitly selected plugin tests retain their assigned config, native-loader
 isolation, worker policy, and group timing. The release-only switch controls the
 full plugin sweep, not the availability of its owner metadata; unrelated PRs
