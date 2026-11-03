@@ -280,6 +280,17 @@ jobs:
             exit 1
           fi
 
+      # The Git owner adopts this pack of recent main so the checkout fetch
+      # transfers only the target's delta; a miss falls back to a full fetch.
+      - &git_seed_restore_step
+        name: Restore Git object seed
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/openclaw-git-seed
+          key: openclaw-git-seed-v1-${{ runner.os }}-${{ runner.arch }}-
+          restore-keys: openclaw-git-seed-v1-${{ runner.os }}-${{ runner.arch }}-
       - name: Checkout
         shell: bash
         env:
@@ -731,6 +742,30 @@ jobs:
               return git_output(workspace, "rev-parse", ref).strip()
 
 
+          def adopt_object_seed():
+              # A trusted warmer publishes a shallow pack of recent main. With its commit
+              # as a shallow "have", fetching the target transfers only the delta.
+              # Moving the pack leaves later reset attempts on the plain fetch path.
+              git_dir = os.path.join(workspace, ".git")
+              seed = os.path.join(os.environ.get("RUNNER_TEMP", ""), "openclaw-git-seed")
+              try:
+                  with open(os.path.join(seed, "commit")) as source:
+                      commit = source.read().strip()
+                  names = sorted(name for name in os.listdir(os.path.join(seed, "pack")) if name.startswith("pack-"))
+              except OSError:
+                  return False
+              if (not re.fullmatch("[0-9a-f]{40}", commit) or os.path.exists(os.path.join(git_dir, "shallow"))
+                      or not any(name.endswith(".pack") for name in names)):
+                  return False
+              # Git ignores a pack until its index exists, so indexes move last.
+              for name in sorted(names, key=lambda name: name.endswith(".idx")):
+                  os.replace(os.path.join(seed, "pack", name), os.path.join(git_dir, "objects", "pack", name))
+              with open(os.path.join(git_dir, "shallow"), "a") as shallow:
+                  shallow.write(commit + "\n")
+              run_git(workspace, "update-ref", "refs/ci-seed", commit)
+              return True
+
+
           def checkout_selected_ref():
               ref = os.environ["CHECKOUT_REF"]
               fallback = os.environ["CHECKOUT_FALLBACK_REF"]
@@ -870,8 +905,11 @@ jobs:
                   run_git(workspace, "config", "--global", "--add", "safe.directory", workspace)
               run_git(workspace, "config", "gc.auto", "0")
               run_git(workspace, "remote", "add", "origin", remote)
+              seeded = linux and adopt_object_seed()
               if kind in ("preflight", "manual"):
                   checkout_selected_ref()
+                  if seeded:
+                      run_git(workspace, "update-ref", "-d", "refs/ci-seed")
                   if kind == "preflight" and resolve_ref("HEAD") == os.environ["WORKFLOW_SHA"]:
                       checkout_harness(os.environ["WORKFLOW_SHA"])
                   return
@@ -886,6 +924,8 @@ jobs:
               refs.extend(prerequisites)
               fetch(workspace, *refs, prune=True, max_attempts=1 if reset else 3,
                     retry_codes=(124, 137) if kind == "skills" else ())
+              if seeded:
+                  run_git(workspace, "update-ref", "-d", "refs/ci-seed")
               run_git(workspace, "checkout", *(["--force"] if reset else []), "--detach",
                       sha if kind in ("linux-node", "android") else target)
               if kind == "android":
@@ -1814,6 +1854,7 @@ jobs:
     # Hosted rows (github backend, hybrid retries, full-release dispatches, fork PRs) run slower.
     timeout-minutes: ${{ ((needs.preflight.outputs.ci_qualification == 'true' && (github.run_attempt == 1 && needs.preflight.outputs.qualification_runner_backend || 'github') || vars.OPENCLAW_CI_RUNNER_BACKEND) == 'github' || (contains(fromJSON('["hybrid","runson"]'), (needs.preflight.outputs.ci_qualification == 'true' && (github.run_attempt == 1 && needs.preflight.outputs.qualification_runner_backend || 'github') || vars.OPENCLAW_CI_RUNNER_BACKEND)) && github.run_attempt > 1) || (github.event_name == 'workflow_dispatch' && needs.preflight.outputs.ci_shape != 'main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)) && 35 || 20 }}
     steps:
+      - *git_seed_restore_step
       - &linux_node_checkout_step
         name: Checkout
         shell: bash
@@ -2436,6 +2477,7 @@ jobs:
       CHECKOUT_BASE_SHA: &ci_diff_base ${{ needs.preflight.outputs.diff_base_revision }}
       COMPATIBILITY_TARGET: &historical_target ${{ needs.preflight.outputs.compatibility_target }}
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
       - &linux_node_setup_step
         name: Setup Node environment
@@ -2467,6 +2509,7 @@ jobs:
     runs-on: *shared_small_linux_runner
     timeout-minutes: 10
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
 
       - *linux_node_setup_step
@@ -2511,6 +2554,7 @@ jobs:
     env:
       COMPATIBILITY_TARGET: *historical_target
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
       - name: Setup Node environment
         id: node_setup
@@ -2599,6 +2643,7 @@ jobs:
       max-parallel: 14
       matrix: ${{ fromJson(needs.preflight.outputs.ui_e2e_matrix) }}
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env
@@ -2786,6 +2831,7 @@ jobs:
       max-parallel: 2
       matrix: ${{ fromJson(needs.preflight.outputs.ui_real_gateway_matrix) }}
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
       - name: Setup Node environment
         id: node_setup
@@ -2984,6 +3030,7 @@ jobs:
     env:
       COMPATIBILITY_TARGET: *historical_target
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
       - name: Setup Node environment
         id: node_setup
@@ -3015,6 +3062,7 @@ jobs:
     env:
       CHECKOUT_BASE_SHA: *ci_diff_base
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
       - name: Prepare release-gate ratchet merge tree
         if: github.event_name == 'workflow_dispatch' && inputs.release_gate
@@ -3145,6 +3193,7 @@ jobs:
     env:
       CHECKOUT_BASE_SHA: ${{ (matrix.task == 'startup-corpus' || matrix.task == 'bundled-protocol' || startsWith(matrix.task, 'release-lint-')) && needs.preflight.outputs.diff_base_revision || '' }}
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
       - name: Smoke test trusted Git owner action
         id: git_owner_smoke
@@ -3323,6 +3372,7 @@ jobs:
       max-parallel: ${{ (needs.preflight.outputs.runner_profile == 'github' || needs.preflight.outputs.runner_profile == 'hybrid') && 6 || 4 }}
       matrix: ${{ fromJson(needs.preflight.outputs.qa_smoke_ci_matrix) }}
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env
@@ -3502,6 +3552,7 @@ jobs:
       max-parallel: 12
       matrix: ${{ fromJson(needs.preflight.outputs.plugin_contracts_matrix) }}
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
       - &contract_node_setup_step
         name: Setup Node environment
@@ -3564,6 +3615,7 @@ jobs:
       max-parallel: 12
       matrix: ${{ fromJson(needs.preflight.outputs.channel_contracts_matrix) }}
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
       - *contract_node_setup_step
 
@@ -3583,6 +3635,7 @@ jobs:
     runs-on: *shared_small_linux_runner
     timeout-minutes: 60
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env
@@ -3626,6 +3679,7 @@ jobs:
       max-parallel: ${{ github.event_name == 'pull_request' && github.repository == 'uuid-rocks/openclaw' && github.run_attempt == 1 && needs.preflight.outputs.frozen_target != 'true' && contains(fromJSON('["blacksmith","hybrid"]'), needs.preflight.outputs.node_runner_backend) && contains(fromJSON('["","blacksmith","hybrid"]'), vars.OPENCLAW_CI_RUNNER_BACKEND) && 130 || 96 }}
       matrix: ${{ fromJson(needs.preflight.outputs.checks_node_core_nondist_matrix) }}
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
       - name: Initialize RunsOn
         if: matrix.runner == 'runson-c8i-8xlarge' && runner.environment == 'self-hosted'
@@ -3890,6 +3944,7 @@ jobs:
       run_lint_extensions: ${{ steps.plan.outputs.run_lint_extensions }}
       run_changed_core_type_stripes: ${{ steps.plan.outputs.run_changed_core_type_stripes }}
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
       - name: Ensure extension lint comparison base
         if: github.event_name == 'pull_request' && contains(fromJSON('["affected","full"]'), fromJSON(needs.preflight.outputs.check_plan_input_json).extensionLintMode)
@@ -3935,6 +3990,7 @@ jobs:
       max-parallel: 12
       matrix: ${{ fromJSON((needs.preflight.outputs.run_check_plan == 'true' && needs.check-plan.outputs.check_matrix || needs.preflight.outputs.check_matrix)) }}
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
       - name: Check npm lock scope before setup
         id: npm-lock-scope
@@ -4334,6 +4390,7 @@ jobs:
       max-parallel: 5
       matrix: ${{ fromJSON((needs.preflight.outputs.run_check_plan == 'true' && needs.check-plan.outputs.lint_core_matrix || needs.preflight.outputs.lint_core_matrix)) }}
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
       - &semantic_node_setup_step
         name: Setup Node environment
@@ -4440,6 +4497,7 @@ jobs:
       max-parallel: 6
       matrix: ${{ fromJSON((needs.preflight.outputs.run_check_plan == 'true' && needs.check-plan.outputs.lint_extension_matrix || needs.preflight.outputs.lint_extension_matrix)) }}
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
       - &plain_node_setup_step
         name: Setup Node environment
@@ -4496,6 +4554,7 @@ jobs:
       max-parallel: 5
       matrix: ${{ fromJSON((needs.preflight.outputs.run_check_plan == 'true' && needs.check-plan.outputs.core_type_matrix || needs.preflight.outputs.core_type_matrix)) }}
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
       - *semantic_node_setup_step
 
@@ -4556,6 +4615,7 @@ jobs:
       max-parallel: 12
       matrix: ${{ fromJSON(needs.preflight.outputs.check_additional_matrix) }}
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
       - name: Ensure additional check comparison base
         if: (matrix.group == 'extension-package-boundary' && github.event_name == 'pull_request') || (matrix.group == 'plugin-sdk-api-diff' && github.event_name == 'workflow_dispatch')
@@ -4663,6 +4723,7 @@ jobs:
     outputs:
       artifact_id: ${{ steps.publish-sdk.outputs.artifact-id }}
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
       - name: Ensure boundary comparison base
         uses: ./.ci-harness/.github/actions/ensure-base-commit
@@ -4708,6 +4769,7 @@ jobs:
       matrix:
         shard: [1/3, 2/3, 3/3]
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
       - *linux_node_setup_step
       - name: Run PostgreSQL conformance
@@ -4725,6 +4787,7 @@ jobs:
     runs-on: *ubuntu_linux_runner
     timeout-minutes: 20
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
       - *linux_node_setup_step
 
@@ -6245,6 +6308,7 @@ jobs:
     runs-on: *ubuntu_linux_runner
     timeout-minutes: 10
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
 
       - name: Setup screenshot evidence Node
@@ -6786,6 +6850,7 @@ jobs:
     # Hosted six-lane budget: 6810s (run 36506671071); 60m cancelled run 36486786689.
     timeout-minutes: 115
     steps:
+      - *git_seed_restore_step
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env

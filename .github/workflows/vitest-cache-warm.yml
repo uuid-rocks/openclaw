@@ -40,6 +40,40 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # ci.yml's Git owner adopts this shallow pack before fetching a target.
+      # One entry per six-hour bucket bounds cache growth and seed staleness.
+      - name: Resolve Git object seed key
+        id: git-seed
+        if: runner.os == 'Linux'
+        run: echo "key=openclaw-git-seed-v1-${RUNNER_OS}-${RUNNER_ARCH}-$(date -u +%Y%m%d)-$(( 10#$(date -u +%H) / 6 ))" >> "$GITHUB_OUTPUT"
+
+      - name: Check Git object seed
+        id: git-seed-lookup
+        if: runner.os == 'Linux'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/openclaw-git-seed
+          key: ${{ steps.git-seed.outputs.key }}
+          lookup-only: true
+
+      - name: Pack Git object seed
+        if: runner.os == 'Linux' && steps.git-seed-lookup.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          seed="$RUNNER_TEMP/openclaw-git-seed"
+          rm -rf "$seed"
+          mkdir -p "$seed/pack"
+          cp .git/objects/pack/pack-* "$seed/pack/"
+          git rev-parse HEAD > "$seed/commit"
+
+      - name: Save Git object seed
+        if: runner.os == 'Linux' && steps.git-seed-lookup.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/openclaw-git-seed
+          key: ${{ steps.git-seed.outputs.key }}
+
       - name: Setup Node environment
         id: setup-node-env
         uses: ./.github/actions/setup-node-env
