@@ -137,6 +137,7 @@ export type NodeTestShardGroup = {
   env?: Record<string, string>;
   fallbackMaxWorkers?: number;
   minTotalMemoryBytes?: number;
+  exclusive?: true;
 };
 
 function compactGroupTimingKey(group: NodeTestShardGroup): string {
@@ -3131,7 +3132,7 @@ export function createNodeTestShardBundles(
         compactMode,
       ),
       options.runnerBackend,
-    );
+    ).map(overlapSerialCapacityJob);
   }
 
   const shards = createNodeTestShards(options);
@@ -4392,6 +4393,60 @@ export function createSelectedNodeTestShardBundles(
   return applyNativeSoloTimings(selectedJobs, options.runnerBackend);
 }
 
+/**
+ * Packing prices settled 32-class bins serially; execution overlaps their ordinary
+ * plans two at a time behind the shard runner's exclusive barrier. Overlapped plans
+ * share the two-worker job budget, so bins where a child could use more stay serial.
+ */
+export function overlapSerialCapacityJob<
+  T extends Pick<
+    NodeTestShard,
+    "runner" | "planConcurrency" | "requiresDist" | "pretestBuildMode" | "env"
+  > & {
+    groups?: NodeTestShardGroup[];
+  },
+>(job: T): T {
+  const groups = job.groups;
+  if (
+    job.runner !== EXTRA_LARGE_NODE_TEST_RUNNER ||
+    (job.planConcurrency ?? 1) !== 1 ||
+    !groups ||
+    groups.length < 2 ||
+    job.requiresDist ||
+    job.pretestBuildMode ||
+    groups.some(
+      (group) =>
+        group.requiresDist ||
+        group.pretestBuildMode ||
+        Math.min(
+          Number(
+            group.env?.OPENCLAW_VITEST_MAX_WORKERS ?? job.env?.OPENCLAW_VITEST_MAX_WORKERS ?? 8,
+          ),
+          group.includePatterns?.length ?? Infinity,
+        ) > 2,
+    )
+  ) {
+    return job;
+  }
+  const exclusive = (group: NodeTestShardGroup) =>
+    isExclusiveCompactGroup(group) || group.configs.some(isExclusiveCiTestConfig);
+  if (groups.filter((group) => !exclusive(group)).length < 2) {
+    return job;
+  }
+  return {
+    ...job,
+    planConcurrency: 2,
+    // Each exclusive plan drains the ordinary span before it; leading with them
+    // leaves one overlapped span instead of one per interleaved barrier.
+    groups: [...groups.filter(exclusive), ...groups.filter((group) => !exclusive(group))].map(
+      (group) =>
+        isExclusiveCompactGroup(group)
+          ? Object.assign({}, group, { exclusive: true as const })
+          : group,
+    ),
+  };
+}
+
 export function normalizeSingletonNodeTestJob<
   T extends Pick<NodeTestShard, "planConcurrency" | "groups" | "env">,
 >(job: T): T {
@@ -5295,6 +5350,7 @@ function createCompactNodeTestShardBundles(
     }
     // Keep packed jobs and their summed time budgets; Gateway boots own the host
     // serially. Preserve the previous two-worker ceiling during runtime placement.
+    // overlapSerialCapacityJob restores overlap around Gateway plans once packing settles.
     job.planConcurrency = 1;
     job.env = { ...job.env, ...PINNED_COMPACT_GROUP_ENV };
   }

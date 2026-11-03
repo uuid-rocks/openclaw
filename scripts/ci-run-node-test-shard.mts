@@ -91,6 +91,7 @@ type ShardGroupConfig = {
   includePatterns?: string[] | null;
   shard_name?: string;
   timing_key?: string;
+  exclusive?: boolean;
 };
 export type ShardGroupPlan = {
   kind: "group";
@@ -648,7 +649,8 @@ export async function runShardPlans(plans: ShardPlan[], options: RunShardOptions
     ? { logicalCpuCount: os.availableParallelism(), totalMemoryBytes: os.totalmem() }
     : null;
   const exclusive = (entry: ShardPlan) =>
-    entry.kind === "group" && entry.plan.configs.some(isExclusiveCiTestConfig);
+    entry.kind === "group" &&
+    (entry.plan.exclusive === true || entry.plan.configs.some(isExclusiveCiTestConfig));
   let concurrency = hostResources
     ? resolveCiVitestPlanConcurrency(plans.length, hostResources, requestedConcurrency)
     : Math.min(plans.length, requestedConcurrency);

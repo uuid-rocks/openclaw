@@ -20,6 +20,7 @@ import {
   createUiTestShardGroups,
   createVitestCacheWarmGroups,
   hasCompleteStartupCorpusCoverage,
+  overlapSerialCapacityJob,
   packCompactNodeTestJobsToCapacity,
   resolveCanonicalNodeTestConfig,
   resolveStartupCorpusTestFiles,
@@ -845,6 +846,50 @@ describe("scripts/lib/ci-node-test-plan.mts", () => {
       jobs.flatMap((job) => job.groups.map(groupName)),
       entries.map(([name]) => name),
     );
+  });
+
+  it("overlaps settled serial 32-class rows only around exclusive barriers", () => {
+    const group = (
+      shard_name: string,
+      config: string,
+      files: number,
+      maxWorkers?: string,
+    ): CompactNodeTestShard["groups"][number] => ({
+      shard_name,
+      configs: [configPath(config)],
+      includePatterns: Array.from(
+        { length: files },
+        (_, index) => `src/${shard_name}-${index}.test.ts`,
+      ),
+      requiresDist: false,
+      runner: "blacksmith-8vcpu-ubuntu-2404",
+      ...(maxWorkers ? { env: { OPENCLAW_VITEST_MAX_WORKERS: maxWorkers } } : {}),
+    });
+    const infra = group("core-runtime-infra-storage-state-hosted-3", "infra", 4, "2");
+    const methods = group("agentic-gateway-methods-hosted-5", "gateway-methods", 1, "4");
+    const cli = group("agentic-cli", "cli", 1);
+    const unitFast = group("core-unit-fast-isolated-hosted-1", "unit-fast-isolated", 3, "2");
+    const serial = (groups: CompactNodeTestShard["groups"]): CompactNodeTestShard => ({
+      checkName: "checks-node-changed-compact-small-2",
+      shardName: "changed-compact-small-2",
+      runner: EXTRA_LARGE_NODE_TEST_RUNNER,
+      requiresDist: false,
+      planConcurrency: 1,
+      groups,
+    });
+
+    expect(overlapSerialCapacityJob(serial([infra, methods, cli, unitFast]))).toMatchObject({
+      planConcurrency: 2,
+      groups: [methods, { ...cli, exclusive: true }, infra, unitFast],
+    });
+    for (const job of [
+      serial([infra, methods, cli]),
+      serial([infra, unitFast, { ...methods, requiresDist: true }]),
+      serial([infra, unitFast, group("core-unit-fast-1", "unit-fast", 3)]),
+      { ...serial([infra, unitFast]), runner: "blacksmith-16vcpu-ubuntu-2404" },
+    ]) {
+      expect(overlapSerialCapacityJob(job)).toBe(job);
+    }
   });
 
   it("freezes settled serial Gateway rows when compacting neighboring parallel jobs", () => {

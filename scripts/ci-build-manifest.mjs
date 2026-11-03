@@ -1272,6 +1272,7 @@ const uiRealGatewayShards =
 const projectNodeTestGroup = ({
   configs,
   env,
+  exclusive,
   fallbackMaxWorkers,
   includePatterns,
   minTotalMemoryBytes,
@@ -1280,6 +1281,7 @@ const projectNodeTestGroup = ({
 }) => ({
   configs,
   env,
+  exclusive,
   fallbackMaxWorkers,
   includePatterns,
   minTotalMemoryBytes,

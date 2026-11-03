@@ -739,83 +739,96 @@ describe("scripts/ci-run-node-test-shard.mts", () => {
     expect(readdirSync(scratchDir)).toEqual([]);
   });
 
-  it("joins ordinary spans around the Gateway barrier with stable cache lanes and include indices", async () => {
-    machine(8, 24);
-    const gates = Array.from({ length: 5 }, () => createDeferred<number>());
-    const admissions = gates.map(() => createDeferred());
-    const seen: Array<[string, string, string, string | undefined]> = [];
-    const configs = ["a.config.ts", "b.config.ts", gatewayCoreConfig, "c.config.ts", "d.config.ts"];
-    const scratchDir = makeScratchDir();
-    const pending = runPlans(
-      groupPlans(
-        configs.map((config, index) => ({
-          configs: [config],
-          shard_name: String(index),
-          includePatterns: [`src/${index}.test.ts`],
-          fallbackMaxWorkers: 2,
-          env: { OPENCLAW_VITEST_MAX_WORKERS: "8" },
-        })),
-      ),
-      {
-        env: {
-          CI: "1",
-          RUNNER_ENVIRONMENT: "self-hosted",
-          OPENCLAW_VITEST_FS_MODULE_CACHE_ROOT: scratchDir,
+  it.each([
+    { fence: "Gateway config", barrier: { configs: [gatewayCoreConfig] } },
+    { fence: "exclusive group", barrier: { configs: ["e.config.ts"], exclusive: true } },
+  ])(
+    "joins ordinary spans around the $fence barrier with stable cache lanes and include indices",
+    async ({ barrier }) => {
+      machine(8, 24);
+      const gates = Array.from({ length: 5 }, () => createDeferred<number>());
+      const admissions = gates.map(() => createDeferred());
+      const seen: Array<[string, string, string, string | undefined]> = [];
+      const plans = [
+        { configs: ["a.config.ts"] },
+        { configs: ["b.config.ts"] },
+        barrier,
+        { configs: ["c.config.ts"] },
+        { configs: ["d.config.ts"] },
+      ];
+      const scratchDir = makeScratchDir();
+      const pending = runPlans(
+        groupPlans(
+          plans.map((plan, index) =>
+            Object.assign({}, plan, {
+              shard_name: String(index),
+              includePatterns: [`src/${index}.test.ts`],
+              fallbackMaxWorkers: 2,
+              env: { OPENCLAW_VITEST_MAX_WORKERS: "8" },
+            }),
+          ),
+        ),
+        {
+          env: {
+            CI: "1",
+            RUNNER_ENVIRONMENT: "self-hosted",
+            OPENCLAW_VITEST_FS_MODULE_CACHE_ROOT: scratchDir,
+          },
+          scratchDir,
+          runChild: async (_args, env, label) => {
+            seen.push([
+              label,
+              env.OPENCLAW_VITEST_FS_MODULE_CACHE_ROOT!,
+              env.OPENCLAW_VITEST_INCLUDE_FILE!,
+              env.OPENCLAW_VITEST_MAX_WORKERS,
+            ]);
+            admissions[Number(label)]!.resolve();
+            return gates[Number(label)]!.promise;
+          },
         },
-        scratchDir,
-        runChild: async (_args, env, label) => {
-          seen.push([
+      );
+      const admitted = (indices: number[]) =>
+        withTestTimeout(
+          Promise.race([Promise.all(indices.map((index) => admissions[index]!.promise)), pending]),
+          1_000,
+          "plan admission",
+        );
+      try {
+        await admitted([0, 1]);
+        expect(seen).toHaveLength(2);
+        gates[0]!.resolve(0);
+        await nextTurn();
+        expect(seen).toHaveLength(2);
+        gates[1]!.resolve(0);
+        await admitted([2]);
+        expect(seen).toHaveLength(3);
+        expect(seen[2]![3]).toBe("8");
+        gates[2]!.resolve(0);
+        await admitted([3, 4]);
+        expect(seen).toHaveLength(5);
+        expect(
+          seen.map(([label, cache, include, workers]) => [
             label,
-            env.OPENCLAW_VITEST_FS_MODULE_CACHE_ROOT!,
-            env.OPENCLAW_VITEST_INCLUDE_FILE!,
-            env.OPENCLAW_VITEST_MAX_WORKERS,
-          ]);
-          admissions[Number(label)]!.resolve();
-          return gates[Number(label)]!.promise;
-        },
-      },
-    );
-    const admitted = (indices: number[]) =>
-      withTestTimeout(
-        Promise.race([Promise.all(indices.map((index) => admissions[index]!.promise)), pending]),
-        1_000,
-        "plan admission",
-      );
-    try {
-      await admitted([0, 1]);
-      expect(seen).toHaveLength(2);
-      gates[0]!.resolve(0);
-      await nextTurn();
-      expect(seen).toHaveLength(2);
-      gates[1]!.resolve(0);
-      await admitted([2]);
-      expect(seen).toHaveLength(3);
-      expect(seen[2]![3]).toBe("8");
-      gates[2]!.resolve(0);
-      await admitted([3, 4]);
-      expect(seen).toHaveLength(5);
-      expect(
-        seen.map(([label, cache, include, workers]) => [
-          label,
-          path.basename(cache),
-          path.basename(include),
-          readList(include),
-          workers,
-        ]),
-      ).toEqual(
-        [0, 1, 0, 0, 1].map((slot, index) => [
-          String(index),
-          `vitest-cache-${slot}`,
-          `node-test-include-${index}.json`,
-          [`src/${index}.test.ts`],
-          index === 2 ? "8" : "2",
-        ]),
-      );
-    } finally {
-      gates.forEach((gate) => gate.resolve(0));
-      await expect(pending).resolves.toBe(0);
-    }
-  });
+            path.basename(cache),
+            path.basename(include),
+            readList(include),
+            workers,
+          ]),
+        ).toEqual(
+          [0, 1, 0, 0, 1].map((slot, index) => [
+            String(index),
+            `vitest-cache-${slot}`,
+            `node-test-include-${index}.json`,
+            [`src/${index}.test.ts`],
+            index === 2 ? "8" : "2",
+          ]),
+        );
+      } finally {
+        gates.forEach((gate) => gate.resolve(0));
+        await expect(pending).resolves.toBe(0);
+      }
+    },
+  );
 
   it("serializes plans with a group-owned cache while retaining worker sizing", async () => {
     machine(8, 31);
