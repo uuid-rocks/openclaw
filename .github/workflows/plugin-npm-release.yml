@@ -132,7 +132,7 @@ env:
 jobs:
   preview_plugins_npm:
     # Scheduled preview is nonpublishing and considers all unpublished packages.
-    if: (github.event_name != 'schedule' || github.repository == 'uuid-rocks/openclaw') && (github.event_name != 'push' || github.ref != 'refs/heads/main' || vars.OPENCLAW_CI_ON_PUSH == 'true')
+    if: (github.event_name != 'schedule' || github.repository == 'openclaw/openclaw') && (github.event_name != 'push' || github.ref != 'refs/heads/main' || vars.OPENCLAW_CI_ON_PUSH == 'true')
     runs-on: &linux_runner_release_ubuntu_latest >-
       ${{ (github.event_name == 'workflow_dispatch' && inputs.release_publish_run_id != '' &&
       vars.OPENCLAW_RELEASE_RUNNER_GROUP || '') != '' && fromJSON(format('{{"group":{0},"labels":{1}}}',

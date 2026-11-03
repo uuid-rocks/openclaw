@@ -359,7 +359,7 @@ jobs:
             github.workflow_ref == 'openclaw/openclaw/.github/workflows/maturity-scorecard.yml@refs/heads/main' &&
             needs.validate_selected_ref.outputs.workflow_file_path == '.github/workflows/maturity-scorecard.yml' &&
             needs.validate_selected_ref.outputs.workflow_ref == 'openclaw/openclaw/.github/workflows/maturity-scorecard.yml@refs/heads/main' &&
-            needs.validate_selected_ref.outputs.workflow_repository == 'uuid-rocks/openclaw' }}
+            needs.validate_selected_ref.outputs.workflow_repository == 'openclaw/openclaw' }}
         uses: ./.github/actions/create-generated-pr-tokens
         with:
           contents-client-id: Iv23liOECG0slfuhz093
@@ -745,7 +745,7 @@ jobs:
         github.workflow_ref == 'openclaw/openclaw/.github/workflows/maturity-scorecard.yml@refs/heads/main' &&
         needs.validate_selected_ref.outputs.workflow_file_path == '.github/workflows/maturity-scorecard.yml' &&
         needs.validate_selected_ref.outputs.workflow_ref == 'openclaw/openclaw/.github/workflows/maturity-scorecard.yml@refs/heads/main' &&
-        needs.validate_selected_ref.outputs.workflow_repository == 'uuid-rocks/openclaw' }}
+        needs.validate_selected_ref.outputs.workflow_repository == 'openclaw/openclaw' }}
     runs-on: *linux_runner_ubuntu
     permissions:
       actions: read
@@ -844,7 +844,7 @@ jobs:
             github.workflow_ref == 'openclaw/openclaw/.github/workflows/maturity-scorecard.yml@refs/heads/main' &&
             needs.validate_selected_ref.outputs.workflow_file_path == '.github/workflows/maturity-scorecard.yml' &&
             needs.validate_selected_ref.outputs.workflow_ref == 'openclaw/openclaw/.github/workflows/maturity-scorecard.yml@refs/heads/main' &&
-            needs.validate_selected_ref.outputs.workflow_repository == 'uuid-rocks/openclaw' }}
+            needs.validate_selected_ref.outputs.workflow_repository == 'openclaw/openclaw' }}
         uses: ./.github/actions/publish-generated-pr
         with:
           contents-client-id: Iv23liOECG0slfuhz093
