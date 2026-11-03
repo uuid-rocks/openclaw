@@ -10,7 +10,7 @@ export async function main(argv = process.argv.slice(2)) {
     throw new Error("CI baseline ratchets cannot prune baselines.");
   }
   const checks = [
-    // Only one large semantic inventory runs; the second slot drains smaller checks.
+    // database-worker analyzes head and base concurrently; the second slot drains smaller checks.
     { name: "database-worker", args: ["check:database-worker-ratchet", ...argv] },
     { name: "max-lines", args: ["check:max-lines-ratchet", ...argv] },
     ...(process.env.RATCHET_PR_HEAD_SHA

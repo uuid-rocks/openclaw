@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -11,6 +11,7 @@ import {
   restoreBuildStepCacheOutputs,
   type BuildCacheStep,
 } from "./build-artifact-cache.mts";
+import { isDirectRunUrl } from "./direct-run.mjs";
 import { nativeTypeScriptToolchainFiles } from "./native-typescript-toolchain.mts";
 import {
   reportNativeTypeScriptPhase,
@@ -121,4 +122,15 @@ export function baseInventory(
     lock.release();
     reportNativeTypeScriptPhase(trace, "release");
   }
+}
+
+/** Publish the base rows from a child; a later baseInventory joins it through the cache lock. */
+export function startBaseInventory(root: string, ref: string) {
+  return spawn(process.execPath, [...process.execArgv, import.meta.filename, root, ref], {
+    stdio: ["ignore", "inherit", "inherit"],
+  });
+}
+
+if (isDirectRunUrl(process.argv[1], import.meta.url)) {
+  baseInventory(process.argv[2]!, process.argv[3]!);
 }

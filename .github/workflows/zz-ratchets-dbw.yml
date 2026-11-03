@@ -9,21 +9,18 @@ concurrency:
   cancel-in-progress: true
 jobs:
   dbw:
-    name: ${{ matrix.v.scope }}-${{ matrix.v.mode }}-${{ matrix.v.runner }}-s${{ matrix.sample }}
+    name: ${{ matrix.v.scope }}-${{ matrix.v.mode }}-${{ matrix.v.runner }}-gogc${{ matrix.v.gogc }}-s${{ matrix.sample }}
     runs-on: blacksmith-${{ matrix.v.runner }}-ubuntu-2404
     timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
-        sample: [1, 2]
+        sample: [1, 2, 3]
         v:
-          - { scope: dbw, mode: seq, runner: 4vcpu }
-          - { scope: dbw, mode: seq, runner: 8vcpu }
-          - { scope: dbw, mode: seq, runner: 16vcpu }
-          - { scope: dbw, mode: par, runner: 4vcpu }
-          - { scope: dbw, mode: par, runner: 8vcpu }
-          - { scope: full, mode: seq, runner: 4vcpu }
-          - { scope: full, mode: par, runner: 4vcpu }
+          - { scope: full, mode: child, runner: 4vcpu, gogc: "" }
+          - { scope: full, mode: child, runner: 8vcpu, gogc: "" }
+          - { scope: full, mode: child, runner: 4vcpu, gogc: "50" }
+          - { scope: dbw, mode: child, runner: 8vcpu, gogc: "" }
     env:
       BASE_SHA: f6a936bd6d0674f258d767369e416430111f1aa6
       ZZ_PROF_OUT: ${{ github.workspace }}/.zz-prof.txt
@@ -44,6 +41,7 @@ jobs:
         env:
           MODE: ${{ matrix.v.mode }}
           SCOPE: ${{ matrix.v.scope }}
+          GOGC_VALUE: ${{ matrix.v.gogc }}
         run: |
           set -euo pipefail
           base=refs/remotes/origin/ci-ratchet-base
@@ -51,6 +49,7 @@ jobs:
           python3 .zz/sample.py "$RUNNER_TEMP/sample.txt" 2 &
           sampler=$!
           export NODE_OPTIONS="--import $GITHUB_WORKSPACE/.zz/prof.mjs"
+          if [[ -n "$GOGC_VALUE" ]]; then export GOGC="$GOGC_VALUE"; fi
           start=$(date +%s)
           if [[ "$MODE" == par ]]; then
             node --max-old-space-size=4096 --import ./scripts/tsx.mjs .zz/prewarm.mts "$base" > "$RUNNER_TEMP/prewarm.txt" 2>&1 &

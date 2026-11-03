@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { inventory, loadInventorySources } from "./database-worker-inventory.mjs";
-import { baseInventory } from "./lib/database-worker-inventory-cache.mts";
+import { baseInventory, startBaseInventory } from "./lib/database-worker-inventory-cache.mts";
 import { isDirectRunUrl } from "./lib/direct-run.mjs";
 import {
   reportNativeTypeScriptPhase,
@@ -17,7 +17,9 @@ export function main(
   root = process.cwd(),
   argv = process.argv.slice(2),
   observer?: NativeTypeScriptObserver,
+  { parallelBase = false } = {},
 ) {
+  let baseChild: ReturnType<typeof startBaseInventory> | undefined;
   const started = performance.now();
   let outcome = "failure";
   const trace: NativeTypeScriptObserver | undefined =
@@ -36,6 +38,7 @@ export function main(
     if (!base) {
       throw new Error("SQLite worker ratchet requires a Git base commit.");
     }
+    baseChild = parallelBase ? startBaseInventory(root, base) : undefined;
     if (trace) {
       let head = "unavailable";
       try {
@@ -97,12 +100,18 @@ export function main(
     console.error(error instanceof Error ? error.message : String(error));
     return 1;
   } finally {
+    baseChild?.kill();
     reportNativeTypeScriptPhase(trace, "ratchet.terminal", { outcome });
   }
 }
 
 if (isDirectRunUrl(process.argv[1], import.meta.url)) {
-  process.exitCode = main(process.cwd(), process.argv.slice(2), (phase, facts) => {
-    console.log("[database-worker-phase] " + JSON.stringify({ phase, ...facts }));
-  });
+  process.exitCode = main(
+    process.cwd(),
+    process.argv.slice(2),
+    (phase, facts) => {
+      console.log("[database-worker-phase] " + JSON.stringify({ phase, ...facts }));
+    },
+    { parallelBase: true },
+  );
 }
