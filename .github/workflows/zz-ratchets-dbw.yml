@@ -1,0 +1,74 @@
+name: zz ratchets database-worker experiment
+on:
+  push:
+    branches: ["exp/ratchets/**"]
+permissions:
+  contents: read
+concurrency:
+  group: zz-ratchets-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  dbw:
+    name: ${{ matrix.scope }}-${{ matrix.mode }}-${{ matrix.runner }}-s${{ matrix.sample }}
+    runs-on: blacksmith-${{ matrix.runner }}-ubuntu-2404
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: [1, 2]
+        include:
+          - { scope: dbw, mode: seq, runner: 4vcpu }
+          - { scope: dbw, mode: seq, runner: 8vcpu }
+          - { scope: dbw, mode: seq, runner: 16vcpu }
+          - { scope: dbw, mode: par, runner: 4vcpu }
+          - { scope: dbw, mode: par, runner: 8vcpu }
+          - { scope: full, mode: seq, runner: 4vcpu }
+          - { scope: full, mode: par, runner: 4vcpu }
+    env:
+      BASE_SHA: f6a936bd6d0674f258d767369e416430111f1aa6
+      ZZ_PROF_OUT: ${{ github.workspace }}/.zz-prof.txt
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Fetch ratchet base
+        run: git fetch --no-tags --depth=1 origin "$BASE_SHA:refs/remotes/origin/ci-ratchet-base"
+      - name: Setup Node environment
+        uses: ./.github/actions/setup-node-env
+        with:
+          install-bun: "false"
+      - name: Install ripgrep
+        uses: ./.github/actions/setup-ripgrep
+      - name: Run database-worker ratchet (${{ matrix.mode }})
+        env:
+          MODE: ${{ matrix.mode }}
+          SCOPE: ${{ matrix.scope }}
+        run: |
+          set -euo pipefail
+          base=refs/remotes/origin/ci-ratchet-base
+          nproc; free -m; cat /proc/cpuinfo | grep "model name" | head -1
+          python3 .zz/sample.py "$RUNNER_TEMP/sample.txt" 2 &
+          sampler=$!
+          export NODE_OPTIONS="--import $GITHUB_WORKSPACE/.zz/prof.mjs"
+          start=$(date +%s)
+          if [[ "$MODE" == par ]]; then
+            node --max-old-space-size=4096 --import ./scripts/tsx.mjs .zz/prewarm.mts "$base" > "$RUNNER_TEMP/prewarm.txt" 2>&1 &
+            prewarm=$!
+          fi
+          status=0
+          if [[ "$SCOPE" == dbw ]]; then
+            node --max-old-space-size=4096 --import ./scripts/tsx.mjs scripts/check-database-worker-ratchet.mts --base "$base" --no-merge-base > "$RUNNER_TEMP/out.txt" 2>&1 || status=$?
+          else
+            pnpm check:baseline-ratchets --base "$base" --no-merge-base > "$RUNNER_TEMP/out.txt" 2>&1 || status=$?
+          fi
+          end=$(date +%s)
+          cat "$RUNNER_TEMP/out.txt"
+          if [[ "$MODE" == par ]]; then wait "$prewarm" || echo "prewarm exit $?"; cat "$RUNNER_TEMP/prewarm.txt"; fi
+          kill "$sampler"; wait "$sampler" || true
+          echo "== wall: $((end - start))s"
+          echo "== verdict"; grep -h "SQLite T1 live calls\|ratchet OK\|reuse" "$RUNNER_TEMP/out.txt" || true
+          sha256sum .artifacts/database-worker-ratchet/base.json || true
+          echo "== prof"; cat "$ZZ_PROF_OUT" || true
+          echo "== sample"; tail -1 "$RUNNER_TEMP/sample.txt"; awk 'NR % 10 == 0' "$RUNNER_TEMP/sample.txt"
+          echo "== status $status"; exit "$status"
