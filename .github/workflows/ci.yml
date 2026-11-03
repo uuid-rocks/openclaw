@@ -293,6 +293,29 @@ jobs:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: &owned_checkout_run |
           set -euo pipefail
+          # FORK-ONLY measurement harness: emulate the CPU/RAM shape that
+          # openclaw/openclaw's Blacksmith org receives for each label.
+          if [[ "${RUNNER_NAME:-}" =~ ^blacksmith-([0-9]+)vcpu-ubuntu ]] && [[ ! -e "$RUNNER_TEMP/.fork-shape" ]]; then
+            case "${BASH_REMATCH[1]}" in
+              2|4|8) emu_cpus=2; emu_mem=8218361856 ;;
+              16) emu_cpus=4; emu_mem=16535624089 ;;
+              32) emu_cpus=8; emu_mem=33229729792 ;;
+              *) emu_cpus=""; emu_mem="" ;;
+            esac
+            if [[ -n "$emu_cpus" ]]; then
+              worker_pid="$PPID"
+              sudo taskset -a -cp "0-$((emu_cpus - 1))" "$worker_pid" >/dev/null
+              sudo mkdir -p /sys/fs/cgroup/fork-shape
+              echo "+memory +cpu" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null || true
+              echo "$emu_mem" | sudo tee /sys/fs/cgroup/fork-shape/memory.max >/dev/null
+              echo "$worker_pid" | sudo tee /sys/fs/cgroup/fork-shape/cgroup.procs >/dev/null
+              mkdir -p "$RUNNER_TEMP/fork-shape"
+              printf '%s\n' "const os = require('node:os');" "os.totalmem = () => $emu_mem;" "require('node:module').syncBuiltinESMExports();" > "$RUNNER_TEMP/fork-shape/preload.cjs"
+              echo "NODE_OPTIONS=--require=$RUNNER_TEMP/fork-shape/preload.cjs${NODE_OPTIONS:+ $NODE_OPTIONS}" >> "$GITHUB_ENV"
+              touch "$RUNNER_TEMP/.fork-shape"
+              echo "fork-shape: label=${BASH_REMATCH[1]}vcpu emulated cpus=$emu_cpus mem=$emu_mem worker=$worker_pid"
+            fi
+          fi
           python_command=python3
           if [ "$RUNNER_OS" = "Windows" ]; then
             python_command=python
