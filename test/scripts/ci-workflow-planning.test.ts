@@ -2199,7 +2199,7 @@ describe("ci workflow guards", () => {
           {
             row: hosted ? "core-1" : "central",
             localCheck: hosted || centralCorePaths ? null : "0",
-            command: `node --ci-graphs-json ${JSON.stringify(coreNames)} --concurrency ${hosted || centralCorePaths ? 2 : 1}`,
+            command: `node --ci-graphs-json ${JSON.stringify(coreNames)} --concurrency ${hosted ? 4 : centralCorePaths ? 2 : 1}`,
           },
           {
             row: "central",
@@ -3403,7 +3403,7 @@ describe("ci workflow guards", () => {
         const hosted = emittedHostedRows(manifest.outputs, { eventName, ref });
         expect(Number(manifest.outputs.hybrid_hosted_total_rows)).toBe(hosted.length);
         expect(hosted.filter((name) => name === "check-test-types-hosted-core-shard")).toHaveLength(
-          admitted ? 5 : 0,
+          admitted ? 1 : 0,
         );
         expect(manifest.outputs.hybrid_hosted_main_checks).toBe(
           String(admitted && eventName === "push"),
@@ -3530,9 +3530,10 @@ describe("ci workflow guards", () => {
             scopeEnv: { OPENCLAW_CI_HOSTED_HEALTHY: healthy },
           });
           expect(manifest.status, manifest.output).toBe(0);
-          // Reserve eight check rows even though one stays on Blacksmith; main adds two.
-          const admitted = healthy === "true" && baseRows + offloadRows + 8 <= 45;
-          const mainAdmitted = admitted && baseRows + offloadRows + 10 <= 45;
+          // Reserve four check rows even though one stays on Blacksmith; main adds two.
+          const existingRows = baseRows + (baseRows <= 40 ? offloadRows : 0);
+          const admitted = healthy === "true" && existingRows + 4 <= 45;
+          const mainAdmitted = admitted && existingRows + 6 <= 45;
           expect(manifest.outputs.hybrid_hosted_checks).toBe(String(admitted));
           expect(manifest.outputs.hybrid_hosted_main_checks).toBe(String(mainAdmitted));
           const hosted = emittedHostedRows(manifest.outputs);
@@ -3543,12 +3544,12 @@ describe("ci workflow guards", () => {
           });
           expect(Number(manifest.outputs.hybrid_hosted_total_rows)).toBe(hosted.length);
           expect(hosted.length - withoutChecks.length).toBe(
-            (admitted ? 7 : 0) + (mainAdmitted ? 2 : 0),
+            (admitted ? 3 : 0) + (mainAdmitted ? 2 : 0),
           );
           expect(hosted).not.toContain("build-artifacts");
           expect(
             hosted.filter((name) => name === "check-test-types-hosted-core-shard"),
-          ).toHaveLength(admitted ? 5 : 0);
+          ).toHaveLength(admitted ? 1 : 0);
           for (const name of ["check-shard", "check-additional-shard"]) {
             expect(
               hosted.filter((row) => row === name).length -
@@ -5049,7 +5050,7 @@ describe("ci workflow guards", () => {
       if (runnerProfile === "hybrid") {
         expect(
           evaluateWorkflowExpression(hostedTypes.strategy.matrix, typeContext).include,
-        ).toEqual([1, 2, 3, 4, 5].map((stripe) => ({ stripe })));
+        ).toEqual([{ stripe: 1 }]);
       }
       for (const [job, admitted] of [
         ["macos-swift", false],
@@ -7232,7 +7233,7 @@ describe("ci workflow guards", () => {
       },
     });
     expect(result.status, result.output).toBe(0);
-    const stripes = targeted ? [] : [1, 2, 3, 4, 5];
+    const stripes = targeted ? [] : [1];
     expect(result.rows).toEqual([
       ...stripes.map((stripe) => ({ name: `core-${stripe}`, status: 0 })),
       { name: "central", status: 0 },
@@ -7242,7 +7243,7 @@ describe("ci workflow guards", () => {
       ...stripes.map((stripe) => ({
         row: `core-${stripe}`,
         localCheck: null,
-        command: `node --stripe ${stripe}/5 --concurrency 2 --changed-paths-json ${JSON.stringify(compilerPaths)}`,
+        command: `node --stripe 1-5/5 --concurrency 4 --changed-paths-json ${JSON.stringify(compilerPaths)}`,
       })),
       ...(targeted
         ? [
@@ -7400,26 +7401,27 @@ describe("ci workflow guards", () => {
       const packages = result.typeCalls.filter((call) => call.command.startsWith("pnpm "));
       expect(packages.map((call) => call.localCheck)).toEqual(packages.map(() => "0"));
       if (striped) {
-        expect(result.rows).toHaveLength(frozenTarget ? 3 : 6);
+        expect(result.rows).toHaveLength(frozenTarget ? 3 : 2);
         expect(
           result.rows.map((row) =>
             stripes
               .filter((call) => call.row === row.name)
               .map((call) => call.command.split(" ")[2]),
           ),
-        ).toEqual(
-          frozenTarget
-            ? [["1/5", "2/5"], ["3/5", "4/5"], ["5/5"]]
-            : [["1/5"], ["2/5"], ["3/5"], ["4/5"], ["5/5"], []],
-        );
+        ).toEqual(frozenTarget ? [["1/5", "2/5"], ["3/5", "4/5"], ["5/5"]] : [["1-5/5"], []]);
         for (const call of stripes) {
           const args = call.command.split(" ").slice(1);
-          expect(args).toEqual(["--stripe", expect.any(String), "--concurrency", "2"]);
+          expect(args).toEqual([
+            "--stripe",
+            expect.any(String),
+            "--concurrency",
+            frozenTarget ? "2" : "4",
+          ]);
           expect(call.localCheck).toBeNull();
         }
         expect(result.calls).toEqual(["tsgo:extensions:test", "tsgo:scripts", "tsgo:test:root"]);
       } else if (changed) {
-        expect(result.rows).toHaveLength(profile === "blacksmith" ? 1 : 6);
+        expect(result.rows).toHaveLength(profile === "blacksmith" ? 1 : 2);
         expect(stripes.map((call) => call.command)).toEqual([
           `node --changed-paths-json ${changedPathsJson} --concurrency 2`,
         ]);
@@ -7433,8 +7435,7 @@ describe("ci workflow guards", () => {
   );
 
   it.each([
-    { failStripe: "1/5", frozenTarget: false },
-    { failStripe: "5/5", frozenTarget: false },
+    { failStripe: "1-5/5", frozenTarget: false },
     { failStripe: "1/5", frozenTarget: true },
     { failStripe: "5/5", frozenTarget: true },
   ])(
@@ -7453,13 +7454,13 @@ describe("ci workflow guards", () => {
       ).toBe(false);
       const failed = result.rows.filter((row) => row.status !== 0);
       expect(failed).toHaveLength(1);
-      expect(result.rows.filter((row) => row.status === 0)).toHaveLength(frozenTarget ? 2 : 5);
+      expect(result.rows.filter((row) => row.status === 0)).toHaveLength(frozenTarget ? 2 : 1);
       expect(
         result.typeCalls
           .filter((call) => call.row === failed[0]!.name && call.command.startsWith("node "))
           .map((call) => call.command),
       ).toEqual([
-        `node --stripe ${failStripe} --concurrency 2${
+        `node --stripe ${failStripe} --concurrency ${frozenTarget ? 2 : 4}${
           changedPathsJson ? ` --changed-paths-json ${changedPathsJson}` : ""
         }`,
         ...(frozenTarget && failStripe === "1/5" ? ["node --stripe 2/5 --concurrency 2"] : []),
@@ -13515,7 +13516,7 @@ describe("extension lint PR admission", () => {
               ? ["tsgo:prod"]
               : profile === "blacksmith"
                 ? ["check:test-types", "tsgo:scripts"]
-                : ["tsgo:extensions:test", "tsgo:scripts"];
+                : ["tsgo:extensions:test", "tsgo:scripts", "tsgo:test:root"];
           const types = {
             compose: task === "test-types",
             rootStripeSupport: true,
@@ -13543,28 +13544,13 @@ describe("extension lint PR admission", () => {
             expect(result.calls).toEqual(emptySelectors ? [] : fallbackCalls);
             const hostedCore = task === "test-types" && profile !== "blacksmith";
             expect(result.rows.map((entry) => entry.name)).toEqual([
-              ...(hostedCore ? [1, 2, 3, 4, 5].map((stripe) => `core-${stripe}`) : []),
+              ...(hostedCore ? ["core-1"] : []),
               "central",
             ]);
             if (hostedCore) {
-              for (let stripe = 1; stripe <= 5; stripe++) {
-                expect(result.typeCalls.filter((call) => call.row === `core-${stripe}`)).toEqual([
-                  {
-                    row: `core-${stripe}`,
-                    command: `node --stripe ${stripe}/5 --concurrency 2`,
-                    localCheck: null,
-                  },
-                  ...(stripe >= 2
-                    ? [
-                        {
-                          row: `core-${stripe}`,
-                          command: `node --root-stripe ${stripe - 1}/4`,
-                          localCheck: "0",
-                        },
-                      ]
-                    : []),
-                ]);
-              }
+              expect(result.typeCalls.filter((call) => call.row === "core-1")).toEqual([
+                { row: "core-1", command: "node --stripe 1-5/5 --concurrency 4", localCheck: null },
+              ]);
             }
           }
           const failed = runCheckShardFixture({

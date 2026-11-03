@@ -950,7 +950,7 @@ const compactExtensionLint =
 const extensionLintRows = compactExtensionLint
   ? [1, 2, 3].map((stripe) => ({ stripe, stripe_count: 3 }))
   : [1, 2, 3, 4, 5, 6].map((stripe) => ({ stripe }));
-const coreTypeRows = (frozenTarget ? [1, 2] : [1, 2, 3, 4, 5]).map((stripe) => ({ stripe }));
+const coreTypeRows = (frozenTarget ? [1, 2] : [1]).map((stripe) => ({ stripe }));
 if (proposedCheckScope) {
   runBaselineRatchets &&= proposedCheckScope.baselineRatchets;
   for (let index = checksFastCoreTasks.length - 1; index >= 0; index--) {
