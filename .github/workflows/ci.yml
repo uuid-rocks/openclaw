@@ -787,6 +787,13 @@ jobs:
               # Git ignores a pack until its index exists, so indexes move last.
               for name in sorted(names, key=lambda name: name.endswith(".idx")):
                   os.replace(os.path.join(seed, "pack", name), os.path.join(git_dir, "objects", "pack", name))
+              try:
+                  run_git(workspace, "cat-file", "-e", commit + "^{commit}")
+              except GitFailure:
+                  # A partially restored seed must not fail single-attempt checkouts.
+                  for name in names:
+                      os.remove(os.path.join(git_dir, "objects", "pack", name))
+                  return False
               with open(os.path.join(git_dir, "shallow"), "a") as shallow:
                   shallow.write(commit + "\n")
               run_git(workspace, "update-ref", "refs/ci-seed", commit)

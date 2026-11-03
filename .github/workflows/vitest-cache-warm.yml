@@ -49,11 +49,11 @@ jobs:
           install-bun: "false"
 
       # ci.yml's Git owner adopts this shallow pack before fetching a target.
-      # One entry per six-hour bucket bounds cache growth and seed staleness.
+      # One entry per UTC day bounds cache growth; a day-old seed still fetches in ~6s.
       - name: Resolve Git object seed key
         id: git-seed
         if: runner.os == 'Linux' && steps.setup-node-env.outputs.cache-mode == 'read-write'
-        run: echo "key=openclaw-git-seed-v1-${RUNNER_OS}-${RUNNER_ARCH}-$(date -u +%Y%m%d)-$(( 10#$(date -u +%H) / 6 ))" >> "$GITHUB_OUTPUT"
+        run: echo "key=openclaw-git-seed-v1-${RUNNER_OS}-${RUNNER_ARCH}-$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
 
       - name: Check Git object seed
         id: git-seed-lookup
@@ -91,12 +91,6 @@ jobs:
         with:
           path: ${{ steps.setup-node-env.outputs.node-toolchain-cache-path }}
           key: ${{ steps.setup-node-env.outputs.node-toolchain-cache-key }}
-
-      # Prefix-restored stores keep every package from earlier lockfiles. Publish
-      # only what this lockfile's install references; unreferenced files have one link.
-      - name: Prune pnpm store
-        if: ${{ steps.setup-node-env.outputs.cache-mode == 'read-write' && ((steps.setup-node-env.outputs.dependency-cache-key != '' && steps.setup-node-env.outputs.dependency-cache-hit != 'true') || (steps.setup-node-env.outputs.pnpm-store-cache-key != '' && steps.setup-node-env.outputs.pnpm-store-cache-hit != 'true')) }}
-        run: pnpm store prune
 
       - name: Save exact dependency cache
         if: ${{ steps.setup-node-env.outputs.cache-mode == 'read-write' && steps.setup-node-env.outputs.dependency-cache-key != '' && steps.setup-node-env.outputs.dependency-cache-hit != 'true' }}

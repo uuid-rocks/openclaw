@@ -64,7 +64,7 @@ and policy runtime into the workspace root. Locks and late writes in the failed
 attempt's directory cannot alter the retry's files. Both attempts retain the
 event's trusted default-branch revision and sparse file selection.
 
-Linux checkouts in `ci.yml` first restore the newest `openclaw-git-seed-v1-<os>-<arch>-*` Actions cache entry. The `vitest-cache-warm` dependency publisher saves its depth-one main pack there once per six-hour UTC bucket, only in read-write cache mode. The owner moves the seed pack into a fresh `.git`, records the seed commit as shallow, and advertises it through a temporary `refs/ci-seed` ref, so the unchanged target fetch transfers only the delta (1-6 seconds instead of about 40). Git objects are content-addressed, so the seed cannot change the checked-out tree. A missing seed, a foreign checkout repository, or a later reset attempt falls back to the plain fetch.
+Linux checkouts in `ci.yml` first restore the newest `openclaw-git-seed-v1-<os>-<arch>-*` Actions cache entry. The `vitest-cache-warm` dependency publisher saves its depth-one main pack there once per UTC day, only in read-write cache mode. The owner moves the seed pack into a fresh `.git`, records the seed commit as shallow, and advertises it through a temporary `refs/ci-seed` ref, so the unchanged target fetch transfers only the delta (1-6 seconds instead of about 40). Git objects are content-addressed, so the seed cannot change the checked-out tree. A missing seed, a foreign checkout repository, or a later reset attempt falls back to the plain fetch.
 
 ## Preflight materialization
 

@@ -5264,8 +5264,8 @@ printf '%s\n' "\${CURL_SUCCESS_IP:-203.0.113.7}"
       stripes.map((stripe) =>
         lintCommand(`--only=core --split-core --core-stripe=${stripe}/5 `, 2),
       );
-    const extensionCommand = (stripe: number, count = 6) =>
-      lintCommand(`--only=extensions --extension-stripe=${stripe}/${count} `);
+    const extensionCommand = (stripe: number, count = 6, threads = 1) =>
+      lintCommand(`--only=extensions --extension-stripe=${stripe}/${count} `, threads);
     const scriptsCommand = lintCommand("--only=scripts ");
     const assertLint = (options: Parameters<typeof runLintOwner>[0], expected: string[]) =>
       expect(runLintOwner(options)).toEqual(expected);
@@ -5317,7 +5317,7 @@ printf '%s\n' "\${CURL_SUCCESS_IP:-203.0.113.7}"
     for (const stripeCount of [3, 6]) {
       for (let stripe = 1; stripe <= stripeCount; stripe++) {
         assertLint({ lane: "extensions", stripe, stripeCount }, [
-          extensionCommand(stripe, stripeCount),
+          extensionCommand(stripe, stripeCount, 2),
         ]);
       }
     }
