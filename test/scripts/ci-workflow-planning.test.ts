@@ -1532,7 +1532,7 @@ describe("ci workflow guards", () => {
             stripe,
             lint_selection_json: JSON.stringify({
               files: [changedPath],
-              coreStripes: stripe === 1 ? [1, 2] : [3, 4, 5],
+              coreStripes: stripe === 1 ? [1, 3, 5] : [2, 4],
               extensionStripes: [],
               groups: [],
               central: false,
