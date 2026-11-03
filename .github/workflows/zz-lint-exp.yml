@@ -17,17 +17,15 @@ jobs:
       matrix:
         rep: [1, 2, 3]
         v:
-          - lint-4-serial
-          - lint-8-multi
-          - types-8-all-c4
-          - chg-4-serial
-          - chg-8-multi
+          - types-4-stripe3
+          - types-4-stripe3-c4
+          - types-4-2stripes-c4
+          - types-4-all-c4
         include:
-          - { v: lint-4-serial, runner: blacksmith-4vcpu-ubuntu-2404 }
-          - { v: lint-8-multi, runner: blacksmith-8vcpu-ubuntu-2404 }
-          - { v: types-8-all-c4, runner: blacksmith-8vcpu-ubuntu-2404 }
-          - { v: chg-4-serial, runner: blacksmith-4vcpu-ubuntu-2404 }
-          - { v: chg-8-multi, runner: blacksmith-8vcpu-ubuntu-2404 }
+          - { v: types-4-stripe3, runner: blacksmith-4vcpu-ubuntu-2404 }
+          - { v: types-4-stripe3-c4, runner: blacksmith-4vcpu-ubuntu-2404 }
+          - { v: types-4-2stripes-c4, runner: blacksmith-4vcpu-ubuntu-2404 }
+          - { v: types-4-all-c4, runner: blacksmith-4vcpu-ubuntu-2404 }
     env:
       OPENCLAW_LOCAL_CHECK: "0"
     steps:
@@ -114,6 +112,13 @@ jobs:
               OPENCLAW_OXLINT_SHARD_CONCURRENCY=9 t lint --only=core --split-core "${all_stripes[@]}" --threads=1 ;;
             lint-*-unsplit)
               t lint --only=core ;;
+            types-*-stripe3-c4)
+              t types --stripe 3/5 --concurrency 4
+              t env OPENCLAW_LOCAL_CHECK=0 node scripts/run-tsgo-core-test-shards.mjs --root-stripe 2/4 ;;
+            types-*-2stripes-c4)
+              t types --stripe 3-4/5 --concurrency 4
+              t types --root-stripe 2/4
+              t types --root-stripe 3/4 ;;
             types-*-stripe3)
               t types --stripe 3/5 --concurrency 2
               t env OPENCLAW_LOCAL_CHECK=0 node scripts/run-tsgo-core-test-shards.mjs --root-stripe 2/4 ;;
