@@ -1963,8 +1963,8 @@ describe("ci workflow guards", () => {
     );
 
     it.each([
-      { label: "hybrid PR", options: { eventName: "pull_request" }, expected: [1, 2] },
-      { label: "hybrid main", options: { eventName: "push" }, expected: [1, 2] },
+      { label: "hybrid PR", options: { eventName: "pull_request" }, expected: [1, 2, 3] },
+      { label: "hybrid main", options: { eventName: "push" }, expected: [1, 2, 3] },
       {
         label: "GitHub PR",
         options: { eventName: "pull_request", runnerProfile: "github" },
@@ -1994,7 +1994,7 @@ describe("ci workflow guards", () => {
           selectedTestTargets: ["src/cron/schedule.test.ts"],
           changedPlannerSource: undefined,
         },
-        expected: [1, 2],
+        expected: [1, 2, 3],
       },
     ] satisfies Array<{
       label: string;
