@@ -507,6 +507,13 @@ selection retains the Gateway config owner and its admission metadata.
 Gateway admission is finalized before runtime placement, so inventory changes
 retain the admitted job ceiling instead of creating a different group policy.
 
+Settled serial 32-class bins with at least two ordinary groups and no dist or
+pretest build run with two plan slots. Gateway configs and exclusive compact
+groups (emitted with `exclusive: true`) run first, each alone behind the fence,
+then ordinary groups overlap. Bins where any child could use more than the
+two-worker overlapped budget stay serial. Packing keeps the serial duration
+budgets.
+
 Direct CI invocations with multiple literal test-file targets use this bounded
 admission when their process groups and cache leaves are scheduler-owned and
 output ownership is explicit. Use a console reporter such as `--reporter=dot`

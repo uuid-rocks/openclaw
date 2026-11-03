@@ -47,6 +47,7 @@ import {
   packNodeTestGroups,
   normalizeSingletonNodeTestJob,
   nodeTestConfigRequiresCanonicalMetadata,
+  overlapSerialCapacityJob,
   resolveCanonicalNodeTestConfig,
   isCanonicalNodeTestConfig,
   isRuntimeTestFileIncluded,
@@ -1229,13 +1230,13 @@ export function createChangedNodeTestShards(
   // budget. Retain its compact rows, including plugin work, without widening scope.
   const cap = options.compactNodeJobCap;
   if (cap === undefined || bounded.filter((shard) => !shard.requiresDist).length <= cap) {
-    return bounded;
+    return bounded.map(overlapSerialCapacityJob);
   }
   const otherNonDistRows = [...otherShards, ...boundaryShards].filter(
     (shard) => !shard.requiresDist,
   ).length;
   if (shards.filter((shard) => !shard.requiresDist).length <= cap || otherNonDistRows >= cap) {
-    return shards;
+    return shards.map(overlapSerialCapacityJob);
   }
   // Only target chunks may grow to fit the remaining rows; all other owners
   // keep their compact execution envelopes and the workflow owns final admission.
@@ -1243,5 +1244,5 @@ export function createChangedNodeTestShards(
     ...otherShards,
     ...createChangedTargetShards(changedTargets, names, cap - otherNonDistRows),
     ...boundaryShards,
-  ];
+  ].map(overlapSerialCapacityJob);
 }

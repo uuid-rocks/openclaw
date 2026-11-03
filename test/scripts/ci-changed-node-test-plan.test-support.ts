@@ -11,6 +11,7 @@ import {
 import {
   createNodeTestShardBundles,
   createSelectedNodeTestShardBundles,
+  overlapSerialCapacityJob,
   type CompactNodeTestShard,
 } from "../../scripts/lib/ci-node-test-plan.mts";
 import { PR_PROTECTED_RUNTIME_TEST_FILES } from "../../scripts/lib/ci-proof-test-inventory.mts";
@@ -114,18 +115,36 @@ export function selectedFiles(shards: FileSelection) {
 }
 
 type NodeTestJobResources = Pick<CompactNodeTestShard, "planConcurrency" | "env">;
+type OverlapCandidate = Parameters<typeof overlapSerialCapacityJob>[0] & { checkName: string };
+
+// Only overlapSerialCapacityJob may raise a settled serial row; re-deriving it reproduces the row.
+function isSettledCapacityOverlap(job: OverlapCandidate, ownerConcurrency: number | undefined) {
+  if (job.planConcurrency !== 2 || (ownerConcurrency ?? 1) !== 1 || !job.groups) {
+    return false;
+  }
+  const serial = {
+    ...job,
+    planConcurrency: 1,
+    groups: job.groups.map(({ exclusive: _exclusive, ...group }) => group),
+  };
+  expect(overlapSerialCapacityJob(serial), `${job.checkName} capacity overlap`).toEqual(job);
+  return true;
+}
 
 export function expectProjectedNodeTestResources(
-  job: NodeTestJobResources,
+  job: OverlapCandidate,
   group: CompactNodeTestShard["groups"][number],
   ownerJob: NodeTestJobResources,
   owner: CompactNodeTestShard["groups"][number],
   scratchDir: string,
 ) {
   // Repacking may serialize a parallel owner, but cannot add concurrency or workers.
-  expect(job.planConcurrency ?? 1, `${group.shard_name} plan concurrency`).toBeLessThanOrEqual(
-    ownerJob.planConcurrency ?? 1,
-  );
+  const overlapped = isSettledCapacityOverlap(job, ownerJob.planConcurrency);
+  if (!overlapped) {
+    expect(job.planConcurrency ?? 1, `${group.shard_name} plan concurrency`).toBeLessThanOrEqual(
+      ownerJob.planConcurrency ?? 1,
+    );
+  }
   const childEnv = (row: NodeTestJobResources, entry: CompactNodeTestShard["groups"][number]) =>
     buildChildEnv(
       { kind: "group", name: entry.shard_name, plan: entry },
@@ -144,6 +163,16 @@ export function expectProjectedNodeTestResources(
     ownerJob,
     owner,
   );
+  if (overlapped) {
+    // A child cannot run more workers than it has files.
+    const usable = (env: NodeJS.ProcessEnv) =>
+      Math.min(Number(env.OPENCLAW_VITEST_MAX_WORKERS), group.includePatterns?.length ?? Infinity);
+    expect(usable(projectedResources), `${group.shard_name} usable workers`).toBe(
+      usable(ownerResources),
+    );
+    delete projectedResources.OPENCLAW_VITEST_MAX_WORKERS;
+    delete ownerResources.OPENCLAW_VITEST_MAX_WORKERS;
+  }
   expect(projectedResources, `${group.shard_name} child environment`).toEqual(ownerResources);
   return projected;
 }
@@ -180,7 +209,9 @@ export function expectCanonicalGroupedConcurrency(shards: Shards, runnerBackend?
       ),
       `canonical concurrency owner for ${group.shard_name}`,
     );
-    expect(shard.planConcurrency, group.shard_name).toBe(owner.planConcurrency);
+    if (!isSettledCapacityOverlap(shard, owner.planConcurrency)) {
+      expect(shard.planConcurrency, group.shard_name).toBe(owner.planConcurrency);
+    }
   }
 }
 
