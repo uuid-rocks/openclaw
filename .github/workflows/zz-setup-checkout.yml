@@ -13,11 +13,11 @@ env:
 
 jobs:
   seed:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        seed: [2h, 1d]
+        seed: [2h]
     steps:
       - name: Restore seed
         id: restore
@@ -56,8 +56,15 @@ jobs:
       fail-fast: false
       matrix:
         runner: [blacksmith-4vcpu-ubuntu-2404]
-        variant: [full, blobless, cached-2h, cached-1d, bs-checkout]
+        variant: [bs-checkout]
         sample: [1, 2, 3]
+        include:
+          - {runner: ubuntu-24.04, variant: full, sample: 1}
+          - {runner: ubuntu-24.04, variant: full, sample: 2}
+          - {runner: ubuntu-24.04, variant: full, sample: 3}
+          - {runner: ubuntu-24.04, variant: cached-2h, sample: 1}
+          - {runner: ubuntu-24.04, variant: cached-2h, sample: 2}
+          - {runner: ubuntu-24.04, variant: cached-2h, sample: 3}
     steps:
       - name: Environment
         run: |
