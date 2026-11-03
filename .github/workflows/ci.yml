@@ -4388,7 +4388,7 @@ jobs:
           fi
           for stripe in "${stripes[@]}"; do
             run_static_check node --import tsx scripts/run-oxlint-shards.mts \
-              --only=core --split-core --core-stripe="$stripe/5" --threads=1
+              --only=core --split-core --core-stripe="$stripe/5" --threads=2
             if [ "$RUNNER_PROFILE" = "github" ] && [ "$RELEASE_GATE" != "true" ] &&
               grep -q -- '--extension-stripe' scripts/run-oxlint-shards.mts 2>/dev/null; then
               run_static_check node --import tsx scripts/run-oxlint-shards.mts \

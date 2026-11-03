@@ -5257,7 +5257,9 @@ printf '%s\n' "\${CURL_SUCCESS_IP:-203.0.113.7}"
     const lintCommand = (flags: string, threads = 1) =>
       `node --import tsx scripts/run-oxlint-shards.mts ${flags}--threads=${threads}`;
     const coreCommands = (...stripes: number[]) =>
-      stripes.map((stripe) => lintCommand(`--only=core --split-core --core-stripe=${stripe}/5 `));
+      stripes.map((stripe) =>
+        lintCommand(`--only=core --split-core --core-stripe=${stripe}/5 `, 2),
+      );
     const extensionCommand = (stripe: number, count = 6) =>
       lintCommand(`--only=extensions --extension-stripe=${stripe}/${count} `);
     const scriptsCommand = lintCommand("--only=scripts ");
