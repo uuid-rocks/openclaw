@@ -9,6 +9,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   shard:
+    if: false
     name: ${{ matrix.id }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
@@ -101,11 +102,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { id: prw-2v-single, runner: blacksmith-2vcpu-ubuntu-2404, split: "1" }
-          - { id: prw-2v-split3, runner: blacksmith-2vcpu-ubuntu-2404, split: "3" }
-          - { id: prw-4v-split3, runner: blacksmith-4vcpu-ubuntu-2404, split: "3" }
-          - { id: prw-8v-single, runner: blacksmith-8vcpu-ubuntu-2404, split: "1" }
-          - { id: prw-8v-split3, runner: blacksmith-8vcpu-ubuntu-2404, split: "3" }
+          - { id: prw-2v-single-r1, runner: blacksmith-2vcpu-ubuntu-2404, split: "1" }
+          - { id: prw-2v-split3-r1, runner: blacksmith-2vcpu-ubuntu-2404, split: "3" }
+          - { id: prw-2v-single-r2, runner: blacksmith-2vcpu-ubuntu-2404, split: "1" }
+          - { id: prw-2v-split3-r2, runner: blacksmith-2vcpu-ubuntu-2404, split: "3" }
+          - { id: prw-2v-single-r3, runner: blacksmith-2vcpu-ubuntu-2404, split: "1" }
+          - { id: prw-2v-split3-r3, runner: blacksmith-2vcpu-ubuntu-2404, split: "3" }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
