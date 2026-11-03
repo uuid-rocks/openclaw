@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        sample: [1, 2]
+        sample: [1]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -29,59 +29,44 @@ jobs:
           vitest-fs-cache: "true"
           node-compile-cache: "true"
 
-      - name: Inventory
-        run: |
-          set -uo pipefail
-          echo "dependency-cache-hit=${{ steps.setup.outputs.dependency-cache-hit }}"
-          df -h "$GITHUB_WORKSPACE" /tmp
-          paths=(node_modules ui/node_modules .cache/openclaw-pnpm-store)
-          du -sh "${paths[@]}"
-          du -sh .cache/openclaw-pnpm-store/* .cache/openclaw-pnpm-store/*/* 2>/dev/null | sort -h | tail -15
-          echo "files node_modules: $(find node_modules -type f | wc -l)"
-          echo "files store: $(find .cache/openclaw-pnpm-store -type f | wc -l)"
-          echo "store bytes only-linked-once (not shared with node_modules):"
-          find .cache/openclaw-pnpm-store -type f -links 1 -printf '%s\n' | awk '{s+=$1} END {printf "%.1f MiB in %d files\n", s/1048576, NR}'
-          echo "store files shared (links>1):"
-          find .cache/openclaw-pnpm-store -type f -links +1 -printf '%s\n' | awk '{s+=$1} END {printf "%.1f MiB in %d files\n", s/1048576, NR}'
-          echo "largest packages in node_modules/.pnpm:"
-          du -s node_modules/.pnpm/* 2>/dev/null | sort -n | tail -25 | awk '{printf "%8.1f MiB %s\n", $1/1024, $2}'
-          ls node_modules/.pnpm | wc -l
-
-      - name: Archive and extraction timing
-        run: |
-          set -euo pipefail
-          paths=(node_modules ui/node_modules packages/*/node_modules extensions/*/node_modules examples/*/node_modules .cache/openclaw-pnpm-store)
-          existing=()
-          for p in "${paths[@]}"; do [ -e "$p" ] && existing+=("$p"); done
-          t0=$(date +%s.%N)
-          tar -cf - -P "${existing[@]}" | zstd -T0 -3 --long=30 -q -o /tmp/deps.tzst
-          t1=$(date +%s.%N)
-          ls -la /tmp/deps.tzst
-          echo "create: $(echo "$t1-$t0" | bc)s"
-          mkdir -p /tmp/x1 /tmp/x2
-          sync; echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null || true
-          t0=$(date +%s.%N)
-          tar -xf /tmp/deps.tzst -P -C /tmp/x1 --use-compress-program "unzstd --long=30"
-          t1=$(date +%s.%N)
-          echo "extract tar+unzstd (actions/cache style): $(echo "$t1-$t0" | bc)s"
-          t0=$(date +%s.%N)
-          zstd -dc --long=30 /tmp/deps.tzst > /dev/null
-          t1=$(date +%s.%N)
-          echo "decompress only to /dev/null: $(echo "$t1-$t0" | bc)s"
-          t0=$(date +%s.%N)
-          zstd -dc --long=30 /tmp/deps.tzst | tar -xf - -C /tmp/x2 --exclude='.cache/openclaw-pnpm-store/cache'
-          t1=$(date +%s.%N)
-          echo "extract excluding pnpm metadata cache: $(echo "$t1-$t0" | bc)s"
-          rm -rf /tmp/x1 /tmp/x2
-
-      - name: Offline install without store
+      - name: Inventory and prune
         env:
           CI: "true"
         run: |
           set -uo pipefail
-          mv .cache/openclaw-pnpm-store .cache/store-aside
-          mkdir -p .cache/openclaw-pnpm-store
-          cp -a .cache/store-aside/toolchain .cache/openclaw-pnpm-store/ 2>/dev/null || true
+          export PATH="$NODE_BIN:$PATH"
+          store=.cache/openclaw-pnpm-store
+          sizes() {
+            du -sh node_modules "$store" "$store"/* 2>/dev/null | tr '\n' ' '; echo
+            find "$store" -type f -links 1 -printf '%s\n' | awk '{s+=$1} END {printf "store links=1: %.1f MiB in %d files\n", s/1048576, NR}'
+            find node_modules -type f -links 1 -printf '%s\n' | awk '{s+=$1} END {printf "node_modules links=1: %.1f MiB in %d files\n", s/1048576, NR}'
+          }
+          archive() {
+            paths=(node_modules ui/node_modules packages/*/node_modules extensions/*/node_modules examples/*/node_modules "$store")
+            existing=(); for p in "${paths[@]}"; do [ -e "$p" ] && existing+=("$p"); done
+            tar -cf - -P "${existing[@]}" | zstd -T0 -3 --long=30 -q -o /tmp/deps-$1.tzst
+            ls -la /tmp/deps-$1.tzst
+          }
+          echo "== before prune"; sizes
+          echo "largest node_modules copies (links=1):"
+          find node_modules -type f -links 1 -size +2M -printf '%s %p\n' | sort -n | tail -15 | awk '{printf "%8.1f MiB %s\n", $1/1048576, $2}'
+          echo "largest store links=1:"
+          find "$store" -type f -links 1 -size +2M -printf '%s %p\n' | sort -n | tail -15 | awk '{printf "%8.1f MiB %s\n", $1/1048576, $2}'
+          ls "$store"/v11 2>/dev/null
+          du -sh "$store"/v11/* 2>/dev/null
+          archive before
           t0=$(date +%s.%N)
-          pnpm install --offline --frozen-lockfile --config.ignore-scripts=false --config.engine-strict=false --config.enable-pre-post-scripts=true --config.side-effects-cache=true --config.package-import-method=hardlink 2>&1 | tail -15
-          echo "rc=${PIPESTATUS[0]} install without store: $(echo "$(date +%s.%N)-$t0" | bc)s"
+          pnpm store prune 2>&1 | tail -5
+          echo "prune took $(echo "$(date +%s.%N)-$t0" | bc)s"
+          echo "== after prune"; sizes
+          archive after
+          t0=$(date +%s.%N)
+          DEPENDENCY_CACHE=true DEPENDENCY_CACHE_HIT=true FROZEN_LOCKFILE=true bash .github/actions/setup-node-env/install-dependencies.sh 2>&1 | tail -4
+          echo "rc=${PIPESTATUS[0]} reconcile after prune $(echo "$(date +%s.%N)-$t0" | bc)s"
+          rm -rf node_modules
+          find ui packages extensions examples -mindepth 1 -maxdepth 2 \( -type d -o -type l \) -name node_modules -exec rm -rf -- {} +
+          t0=$(date +%s.%N)
+          DEPENDENCY_CACHE=true DEPENDENCY_CACHE_HIT=true FROZEN_LOCKFILE=true bash .github/actions/setup-node-env/install-dependencies.sh 2>&1 | tail -6
+          echo "rc=${PIPESTATUS[0]} relink from pruned store $(echo "$(date +%s.%N)-$t0" | bc)s"
+      - name: done
+        run: echo ok
