@@ -1,0 +1,98 @@
+name: zz setup manifest probe
+
+on:
+  push:
+    branches: ["exp/setup/manifest*"]
+
+permissions:
+  contents: read
+
+jobs:
+  manifest:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, blacksmith-4vcpu-ubuntu-2404]
+    env:
+      OPENCLAW_CI_REPOSITORY: ${{ github.repository }}
+      OPENCLAW_TYPECHECKER: ""
+      OPENCLAW_CI_DOCS_ONLY: "false"
+      OPENCLAW_CI_DOCS_CHANGED: "true"
+      OPENCLAW_CI_DOCS_ROOT_PROSE_ONLY: "false"
+      OPENCLAW_CI_RUN_NODE: "true"
+      OPENCLAW_CI_NODE_TEST_DATA_ONLY: "false"
+      OPENCLAW_CI_NODE_SELECTION: ""
+      OPENCLAW_CI_RUN_MACOS: "false"
+      OPENCLAW_CI_RUN_MACOS_NODE: "false"
+      OPENCLAW_CI_RUN_IOS_BUILD: "false"
+      OPENCLAW_CI_RUN_IOS_SCREENSHOTS: "false"
+      OPENCLAW_CI_RUN_ANDROID_SCREENSHOTS: "false"
+      OPENCLAW_CI_RUN_ANDROID: "false"
+      OPENCLAW_CI_RUN_WINDOWS: "false"
+      OPENCLAW_CI_RUN_NODE_FAST_ONLY: "false"
+      OPENCLAW_CI_RUN_NODE_FAST_PLUGIN_CONTRACTS: "false"
+      OPENCLAW_CI_RUN_NODE_FAST_CI_ROUTING: "false"
+      OPENCLAW_CI_RUN_SKILLS_PYTHON: "false"
+      OPENCLAW_CI_RUN_CONTROL_UI_I18N: "false"
+      OPENCLAW_CI_RUN_UI_TESTS: "false"
+      OPENCLAW_CI_UI_E2E_FULL: "false"
+      OPENCLAW_CI_IOS_SIMULATOR_FULL: "false"
+      OPENCLAW_CI_EXTENSION_LINT_FULL: "false"
+      OPENCLAW_CI_RUN_NATIVE_I18N: "false"
+      OPENCLAW_CI_CHANGED_PATHS_JSON: "[\"extensions/codex/src/app-server/thread-fingerprints.test.ts\",\"test/test-audit-ledger.md\"]"
+      OPENCLAW_CI_CORRECTION_BASE_SHA: ""
+      OPENCLAW_CI_HISTORICAL_TARGET: "false"
+      OPENCLAW_CI_RELEASE_GATE: "false"
+      OPENCLAW_CI_RELEASE_FAST_LANE_LABEL: "false"
+      OPENCLAW_CI_RELEASE_SCOPE: "full"
+      OPENCLAW_CI_VALIDATION_TIER: "full"
+      OPENCLAW_CI_PULL_REQUEST_NUMBER: ""
+      OPENCLAW_CI_TARGET_REF: ""
+      OPENCLAW_CI_TARGET_CONTEXT_REF: ""
+      OPENCLAW_CI_HISTORICAL_TARGET_TAG: ""
+      OPENCLAW_CI_RELEASE_CANDIDATE_TARGET: "false"
+      OPENCLAW_CI_TARGET_CONTEXT_TARGET: "false"
+      OPENCLAW_CI_EVENT_NAME: "pull_request"
+      OPENCLAW_CI_TEST_RUNTIME_POLICY: ""
+      OPENCLAW_CI_RUNNER_PROFILE: "hybrid"
+      OPENCLAW_CI_NODE_RUNNER_BACKEND: "hybrid"
+      OPENCLAW_CI_QUALIFICATION: "false"
+      OPENCLAW_CI_SHAPE: "default"
+      OPENCLAW_CI_RUNNER_BACKEND: "hybrid"
+      OPENCLAW_CI_HOSTED_HEALTHY: ""
+      OPENCLAW_CI_HEAD_REPOSITORY: "openclaw/openclaw"
+      OPENCLAW_CI_PR_AUTHOR_TYPE: "User"
+      OPENCLAW_CI_FULL: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.22.1
+      - name: A/B manifest
+        run: |
+          set -euo pipefail
+          nproc
+          export OPENCLAW_CI_CHANGED_BASE="$(git rev-parse HEAD~1)" OPENCLAW_CI_CHECKOUT_REVISION="$GITHUB_SHA" OPENCLAW_CI_WORKFLOW_REVISION="$GITHUB_SHA"
+          cp scripts/ci-build-manifest.mjs /tmp/warm-manifest.mjs
+          cp scripts/test-projects.test-support.mts /tmp/warm-tps.mts
+          for i in 1 2 3; do
+            for v in base warm; do
+              if [ "$v" = base ]; then
+                git show HEAD~1:scripts/ci-build-manifest.mjs > scripts/ci-build-manifest.mjs
+                git show HEAD~1:scripts/test-projects.test-support.mts > scripts/test-projects.test-support.mts
+              else
+                cp /tmp/warm-manifest.mjs scripts/ci-build-manifest.mjs
+                cp /tmp/warm-tps.mts scripts/test-projects.test-support.mts
+              fi
+              export GITHUB_OUTPUT="/tmp/out-$v"
+              rm -f "$GITHUB_OUTPUT"
+              s=$(date +%s%N)
+              node scripts/ci-build-manifest.mjs > /dev/null
+              echo "MANIFEST $v $(( ($(date +%s%N)-s)/1000000 ))ms" | tee -a "$GITHUB_STEP_SUMMARY"
+            done
+          done
+          diff <(sort /tmp/out-base) <(sort /tmp/out-warm) && echo "outputs identical"
