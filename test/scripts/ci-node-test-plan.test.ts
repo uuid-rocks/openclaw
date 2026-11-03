@@ -2077,6 +2077,8 @@ describe("scripts/lib/ci-node-test-plan.mts", () => {
     const guards = [
       // Provisioning inspects templates through the fork-owned SQLite broker.
       ["test/scripts/pr-worktree-provision.test.ts", configPath("infra")],
+      ["test/scripts/pr-worktree-provision.hook-policy.test.ts", configPath("infra")],
+      ["test/scripts/pr-worktree-provision.hook-faults.test.ts", configPath("infra")],
       ["test/scripts/eager-import-closure.test.ts", configPath("tooling")],
     ] as const;
     const manifest = "scripts/pr-lib/wrapper-components.txt";
