@@ -2605,6 +2605,11 @@ function getImportGraph(
   return graph;
 }
 
+export function warmImportGraphEdges(cwd = process.cwd(), options: ImportGraphOptions = {}) {
+  const files = listImportGraphFilesForCwd(cwd, options);
+  readImportGraphEdges(cwd, files, new Set(files), options.tooling);
+}
+
 /** Query imports/re-exports from targets without scanning unrelated source bodies. */
 export function hasImportGraphImpactOnTargets(
   changedPaths: string[],

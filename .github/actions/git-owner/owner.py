@@ -423,6 +423,32 @@ def resolve_ref(ref):
     return git_output(workspace, "rev-parse", ref).strip()
 
 
+def adopt_object_seed():
+    # A trusted warmer publishes a shallow pack of recent main. With its commit
+    # as a shallow "have", fetching the target transfers only the delta.
+    # Moving the pack leaves later reset attempts on the plain fetch path.
+    if os.environ["CHECKOUT_REPO"] != os.environ.get("GITHUB_REPOSITORY"):
+        return False
+    git_dir = os.path.join(workspace, ".git")
+    seed = os.path.join(os.environ.get("RUNNER_TEMP", ""), "openclaw-git-seed")
+    try:
+        with open(os.path.join(seed, "commit")) as source:
+            commit = source.read().strip()
+        names = sorted(name for name in os.listdir(os.path.join(seed, "pack")) if name.startswith("pack-"))
+    except OSError:
+        return False
+    if (not re.fullmatch("[0-9a-f]{40}", commit) or os.path.exists(os.path.join(git_dir, "shallow"))
+            or not any(name.endswith(".pack") for name in names)):
+        return False
+    # Git ignores a pack until its index exists, so indexes move last.
+    for name in sorted(names, key=lambda name: name.endswith(".idx")):
+        os.replace(os.path.join(seed, "pack", name), os.path.join(git_dir, "objects", "pack", name))
+    with open(os.path.join(git_dir, "shallow"), "a") as shallow:
+        shallow.write(commit + "\n")
+    run_git(workspace, "update-ref", "refs/ci-seed", commit)
+    return True
+
+
 def checkout_selected_ref():
     ref = os.environ["CHECKOUT_REF"]
     fallback = os.environ["CHECKOUT_FALLBACK_REF"]
@@ -562,8 +588,11 @@ def checkout():
         run_git(workspace, "config", "--global", "--add", "safe.directory", workspace)
     run_git(workspace, "config", "gc.auto", "0")
     run_git(workspace, "remote", "add", "origin", remote)
+    seeded = linux and adopt_object_seed()
     if kind in ("preflight", "manual"):
         checkout_selected_ref()
+        if seeded:
+            run_git(workspace, "update-ref", "-d", "refs/ci-seed")
         if kind == "preflight" and resolve_ref("HEAD") == os.environ["WORKFLOW_SHA"]:
             checkout_harness(os.environ["WORKFLOW_SHA"])
         return
@@ -578,6 +607,8 @@ def checkout():
     refs.extend(prerequisites)
     fetch(workspace, *refs, prune=True, max_attempts=1 if reset else 3,
           retry_codes=(124, 137) if kind == "skills" else ())
+    if seeded:
+        run_git(workspace, "update-ref", "-d", "refs/ci-seed")
     run_git(workspace, "checkout", *(["--force"] if reset else []), "--detach",
             sha if kind in ("linux-node", "android") else target)
     if kind == "android":
