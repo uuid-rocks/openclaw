@@ -1007,7 +1007,7 @@ jobs:
   notify_gateway_publication:
     name: Notify Windows of published Gateway packages
     needs: publish_openclaw_npm
-    if: ${{ always() && !cancelled() && github.repository == 'openclaw/openclaw' && github.event_name == 'workflow_dispatch' && !inputs.preflight_only && (needs.publish_openclaw_npm.outputs.openclaw_publication != '' || needs.publish_openclaw_npm.outputs.gateway_protocol_publication != '') }}
+    if: ${{ always() && !cancelled() && github.repository == 'uuid-rocks/openclaw' && github.event_name == 'workflow_dispatch' && !inputs.preflight_only && (needs.publish_openclaw_npm.outputs.openclaw_publication != '' || needs.publish_openclaw_npm.outputs.gateway_protocol_publication != '') }}
     continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 5
