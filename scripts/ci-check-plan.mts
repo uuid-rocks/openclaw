@@ -5,11 +5,7 @@ import { detectChangedLanes } from "./changed-lanes.mts";
 import { isDirectRunUrl } from "./lib/direct-run.mjs";
 import { runWithFailedTrailer } from "./lib/failed-trailer.mts";
 import { isRecord } from "./lib/record-shared.mjs";
-import {
-  resolveChangedCiTsgoInputs,
-  selectTsgoCoreTestStripe,
-  TSGO_ROOT_TEST_SHARDS,
-} from "./lib/tsgo-core-test-shards.mts";
+import { resolveChangedCiTsgoInputs, TSGO_ROOT_TEST_SHARDS } from "./lib/tsgo-core-test-shards.mts";
 
 type CheckRow = {
   check_name: string;
@@ -24,7 +20,6 @@ type StripeRow = {
   lint_selection_json?: string;
   shared_central_lint_selection_json?: string;
   type_graph_names_json?: string;
-  root_type_stripe?: string;
 };
 type Matrix<Row> = { include: Row[] };
 
@@ -82,7 +77,7 @@ export async function createCiCheckPlan(input: CiCheckPlanInput) {
     !hosted && !input.changedCoreTestPaths
       ? ["extensions-test", ...rootNames, "scripts"]
       : ["extensions-test", "scripts", ...rootNames];
-  let other = otherOrder.flatMap((name) => graphs.filter((graph) => graph.name === name));
+  const other = otherOrder.flatMap((name) => graphs.filter((graph) => graph.name === name));
   if (production.length + coreTests.length + other.length !== graphs.length) {
     throw new Error("Every selected compiler graph must have a CI execution owner");
   }
@@ -93,62 +88,22 @@ export async function createCiCheckPlan(input: CiCheckPlanInput) {
   ) {
     throw new Error("Selected compiler graphs have no preflight check template");
   }
-  const assignedCore = new Set<string>();
+  // One hosted row owns every core test graph; root partitions stay in the central row.
+  const [coreTemplate] = input.coreTypeMatrix.include;
+  if (!input.preserveFullChecks && hosted && coreTests.length > 0 && !coreTemplate) {
+    throw new Error("Selected core compiler graphs have no preflight stripe template");
+  }
   const coreRows: StripeRow[] =
     input.preserveFullChecks && hosted
       ? input.coreTypeMatrix.include.map((row) => ({ ...row }))
-      : typePlan && hosted
-        ? input.coreTypeMatrix.include.flatMap((row) => {
-            const configs = new Set(
-              selectTsgoCoreTestStripe(`${row.stripe}/5`)?.map(({ config }) => config),
-            );
-            const selected = coreTests.filter(({ config }) => configs.has(config));
-            for (const graph of selected) {
-              assignedCore.add(graph.name);
-            }
-            return selected.length
-              ? [
-                  {
-                    ...row,
-                    type_graph_names_json: JSON.stringify(selected.map(({ name }) => name)),
-                  },
-                ]
-              : [];
-          })
+      : hosted && coreTemplate && coreTests.length > 0
+        ? [
+            {
+              ...coreTemplate,
+              type_graph_names_json: JSON.stringify(coreTests.map(({ name }) => name)),
+            },
+          ]
         : [];
-  if (!input.preserveFullChecks && hosted && assignedCore.size !== coreTests.length) {
-    throw new Error("Selected core compiler graphs have no preflight stripe template");
-  }
-  // Reuse admitted rows only; small selections keep their serial central owner.
-  // Each root partition runs after its row's concurrent core compilers settle.
-  if (
-    !input.preserveFullChecks &&
-    coreRows.length >= 4 &&
-    other.some(({ name }) => rootNames.includes(name))
-  ) {
-    const fullRoot = other.some(({ name }) => name === "test-root");
-    for (const [index, row] of coreRows.slice(-4).entries()) {
-      if (fullRoot || other.some(({ name }) => name === TSGO_ROOT_TEST_SHARDS[index]!.name)) {
-        row.root_type_stripe = `${index + 1}/4`;
-      }
-    }
-    other = other.filter(({ name }) => !rootNames.includes(name));
-  }
-  // Two single-graph selections fit the existing two-compiler worker budget.
-  // Full stripes and root partitions keep their own timeout/memory boundaries.
-  if (
-    hosted &&
-    typePlan?.mode === "changed" &&
-    coreRows.length === 2 &&
-    coreRows.every(
-      (row) => !row.root_type_stripe && JSON.parse(row.type_graph_names_json!).length === 1,
-    )
-  ) {
-    coreRows[0]!.type_graph_names_json = JSON.stringify(
-      coreRows.flatMap((row) => JSON.parse(row.type_graph_names_json!)),
-    );
-    coreRows.splice(1, 1);
-  }
   const checkRows = input.checkMatrix.include.flatMap((row) => {
     if (input.preserveFullChecks) {
       return [row];
