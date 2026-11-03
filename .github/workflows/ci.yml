@@ -4381,9 +4381,9 @@ jobs:
           stripes=("$CORE_STRIPE")
           if ${{ needs.preflight.outputs.runner_profile == 'hybrid' && needs.preflight.outputs.frozen_target != 'true' && ((!inputs.release_gate && (github.event_name == 'push' || github.event_name == 'pull_request')) || (needs.preflight.outputs.node_runner_backend == 'runson' || needs.preflight.outputs.ci_qualification == 'true')) }}; then
             if [ "$CORE_STRIPE" = "1" ]; then
-              stripes=(1 2)
+              stripes=(1 3 5)
             else
-              stripes=(3 4 5)
+              stripes=(2 4)
             fi
           fi
           for stripe in "${stripes[@]}"; do

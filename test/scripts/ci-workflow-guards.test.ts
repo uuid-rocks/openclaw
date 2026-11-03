@@ -5267,8 +5267,8 @@ printf '%s\n' "\${CURL_SUCCESS_IP:-203.0.113.7}"
     for (const eventName of ["pull_request", "push"] as const) {
       expect([1, 2].map((stripe) => runLintOwner({ eventName, lane: "core", stripe }))).toEqual(
         [
-          [1, 2],
-          [3, 4, 5],
+          [1, 3, 5],
+          [2, 4],
         ].map((stripes) => coreCommands(...stripes)),
       );
     }
@@ -5288,10 +5288,10 @@ printf '%s\n' "\${CURL_SUCCESS_IP:-203.0.113.7}"
         scriptsCommand,
       ]);
     }
-    assertLint({ eventName: "pull_request", failStripe: 1, lane: "core" }, coreCommands(1, 2));
+    assertLint({ eventName: "pull_request", failStripe: 1, lane: "core" }, coreCommands(1, 3, 5));
     assertLint(
       { eventName: "pull_request", failStripe: 4, lane: "core", stripe: 2 },
-      coreCommands(3, 4, 5),
+      coreCommands(2, 4),
     );
 
     assertLint({ lane: "check", profile: "github" }, [extensionCommand(6), scriptsCommand]);

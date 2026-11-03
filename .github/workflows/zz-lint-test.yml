@@ -1,0 +1,25 @@
+name: zz-lint-test
+on:
+  push:
+    branches: ["exp/lint/**"]
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: blacksmith-16vcpu-ubuntu-2404
+    timeout-minutes: 30
+    env:
+      OPENCLAW_LOCAL_CHECK: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-env
+        with:
+          semantic-checks: "true"
+          cache-mode: restore
+          install-bun: "false"
+          dependency-cache: "true"
+      - name: Touched tests
+        run: node scripts/test-projects.mts test/scripts/ci-workflow-guards.test.ts test/scripts/ci-workflow-planning.test.ts test/scripts/ci-changed-lint.test.ts test/scripts/run-oxlint.test.ts
