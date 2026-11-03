@@ -1,0 +1,70 @@
+name: zz-types-measure
+on:
+  push:
+    branches: ["exp/lint/types-measure"]
+permissions:
+  contents: read
+jobs:
+  exp:
+    name: ${{ matrix.v }} r${{ matrix.rep }}
+    runs-on: blacksmith-16vcpu-ubuntu-2404
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        rep: [1, 2, 3]
+        v: [cur-1, cur-2, cur-3, cur-4, cur-5, cur-central, new-core, new-central]
+    env:
+      OPENCLAW_LOCAL_CHECK: "0"
+    steps:
+      - name: Emulate upstream shape
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${RUNNER_NAME:-}" =~ ^blacksmith-([0-9]+)vcpu-ubuntu ]]; then
+            case "${BASH_REMATCH[1]}" in
+              2|4|8) emu_cpus=2; emu_mem=8218361856 ;;
+              16) emu_cpus=4; emu_mem=16535624089 ;;
+              32) emu_cpus=8; emu_mem=33229729792 ;;
+            esac
+            worker_pid="$PPID"
+            sudo taskset -a -cp "0-$((emu_cpus - 1))" "$worker_pid" >/dev/null
+            sudo mkdir -p /sys/fs/cgroup/fork-shape
+            echo "+memory +cpu" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null || true
+            echo "$emu_mem" | sudo tee /sys/fs/cgroup/fork-shape/memory.max >/dev/null
+            echo "$worker_pid" | sudo tee /sys/fs/cgroup/fork-shape/cgroup.procs >/dev/null
+            mkdir -p "$RUNNER_TEMP/fork-shape"
+            printf '%s\n' "const os = require('node:os');" "os.totalmem = () => $emu_mem;" "require('node:module').syncBuiltinESMExports();" > "$RUNNER_TEMP/fork-shape/preload.cjs"
+            echo "NODE_OPTIONS=--require=$RUNNER_TEMP/fork-shape/preload.cjs${NODE_OPTIONS:+ $NODE_OPTIONS}" >> "$GITHUB_ENV"
+            echo "fork-shape: cpus=$emu_cpus mem=$emu_mem"
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-env
+        with:
+          semantic-checks: "true"
+          cache-mode: restore
+          install-bun: "false"
+          dependency-cache: "true"
+      - name: Experiment
+        shell: bash
+        env:
+          V: ${{ matrix.v }}
+        run: |
+          set -euo pipefail
+          echo "nproc=$(nproc) node_cpus=$(node -p 'require("os").availableParallelism()') node_mem=$(node -p 'require("os").totalmem()')"
+          ( while true; do awk '/MemTotal/{t=$2}/MemAvailable/{a=$2}END{print (t-a)/1048576}' /proc/meminfo >> /tmp/mem.txt; sleep 2; done ) &
+          t() { local s=$(date +%s) rc=0; echo "::group::$*"; TIMEFORMAT="[time] %R s wall, %U user, %S sys"; time "$@" || rc=$?; echo "::endgroup::"; echo "[step] $(( $(date +%s) - s ))s rc=$rc :: $*" >&2; }
+          ts() { node scripts/run-tsgo-core-test-shards.mjs "$@"; }
+          start=$(date +%s)
+          case "$V" in
+            cur-1) t ts --stripe 1/5 --concurrency 2 ;;
+            cur-[2-5]) s="${V#cur-}"; t ts --stripe "$s/5" --concurrency 2; t ts --root-stripe "$((s - 1))/4" ;;
+            cur-central) t pnpm tsgo:extensions:test; t pnpm tsgo:scripts ;;
+            new-core) t ts --stripe 1-5/5 --concurrency 4 ;;
+            new-central) t pnpm tsgo:extensions:test; t pnpm tsgo:scripts; t pnpm tsgo:test:root ;;
+          esac
+          echo "[total] $(( $(date +%s) - start ))s"
+          echo "[mem] peak used $(sort -n /tmp/mem.txt | tail -1) GiB"
