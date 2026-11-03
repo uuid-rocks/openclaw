@@ -282,9 +282,9 @@ jobs:
 
       # The Git owner adopts this pack of recent main so the checkout fetch
       # transfers only the target's delta; a miss falls back to a full fetch.
-      - &git_seed_restore_step
-        name: Restore Git object seed
-        if: runner.os == 'Linux'
+      # Trust is classified after checkout, so manual candidates skip it here.
+      - name: Restore Git object seed
+        if: runner.os == 'Linux' && github.event_name != 'workflow_dispatch'
         continue-on-error: true
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -1856,7 +1856,15 @@ jobs:
     # Hosted rows (github backend, hybrid retries, full-release dispatches, fork PRs) run slower.
     timeout-minutes: ${{ ((needs.preflight.outputs.ci_qualification == 'true' && (github.run_attempt == 1 && needs.preflight.outputs.qualification_runner_backend || 'github') || vars.OPENCLAW_CI_RUNNER_BACKEND) == 'github' || (contains(fromJSON('["hybrid","runson"]'), (needs.preflight.outputs.ci_qualification == 'true' && (github.run_attempt == 1 && needs.preflight.outputs.qualification_runner_backend || 'github') || vars.OPENCLAW_CI_RUNNER_BACKEND)) && github.run_attempt > 1) || (github.event_name == 'workflow_dispatch' && needs.preflight.outputs.ci_shape != 'main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)) && 35 || 20 }}
     steps:
-      - *git_seed_restore_step
+      - &git_seed_restore_step
+        name: Restore Git object seed
+        if: runner.os == 'Linux' && needs.preflight.outputs.cache_mode != 'off'
+        continue-on-error: true
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/openclaw-git-seed
+          key: openclaw-git-seed-v1-${{ runner.os }}-${{ runner.arch }}-
+          restore-keys: openclaw-git-seed-v1-${{ runner.os }}-${{ runner.arch }}-
       - &linux_node_checkout_step
         name: Checkout
         shell: bash
