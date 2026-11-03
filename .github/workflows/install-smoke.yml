@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   install_smoke:
-    if: github.repository == 'uuid-rocks/openclaw'
+    if: github.repository == 'openclaw/openclaw'
     permissions:
       actions: read
       contents: read

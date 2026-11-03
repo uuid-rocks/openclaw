@@ -11,8 +11,8 @@ permissions: {}
 jobs:
   notify:
     if: >-
-      github.repository == 'uuid-rocks/openclaw' &&
-      github.event.workflow_run.head_repository.full_name == 'uuid-rocks/openclaw' &&
+      github.repository == 'openclaw/openclaw' &&
+      github.event.workflow_run.head_repository.full_name == 'openclaw/openclaw' &&
       github.event.workflow_run.event == 'schedule' &&
       (github.event.workflow_run.display_title == 'iOS Store release (weekly)' ||
       github.event.workflow_run.display_title == 'Android Store release (weekly)')

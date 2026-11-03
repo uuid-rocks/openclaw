@@ -44,7 +44,7 @@ permissions: {}
 
 jobs:
   stale-lifecycle:
-    if: ${{ github.repository == 'uuid-rocks/openclaw' }}
+    if: ${{ github.repository == 'openclaw/openclaw' }}
     concurrency:
       group: barnacle-stale-lifecycle
       cancel-in-progress: false
