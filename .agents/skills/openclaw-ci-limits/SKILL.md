@@ -754,16 +754,17 @@ These are intentionally guarded by the `ci-workflow-guards`,
   profiles retain their layout. Run shared central lint after a core failure so
   its diagnostics and failure remain visible. This removes one registration and
   setup, without enlarging runner capacity or relaxing a check.
-- Current GitHub/hybrid test types use five canonical core stripe jobs plus
-  the central extensions/scripts/root tail. Eligible core-change PRs keep the
-  same rows: each validates the complete graph boundary and intersects selected
-  consumers with its original stripe. Empty intersections stay empty; ambiguous
-  selection falls back to every canonical graph across those same stripes.
+- Current GitHub/hybrid test types use one core row (`--stripe 1-5/5
+  --concurrency 4`) plus the central extensions/scripts/root tail. On the
+  4-CPU/15-GiB 16-class, four single-threaded compilers peak near 9 GiB.
+  Eligible core-change PRs keep the same row: it validates the complete graph
+  boundary and checks only selected consumers. An empty selection drops the row;
+  ambiguous selection falls back to every canonical graph.
   Check existence only for compiler inputs: deleted Markdown and UI CSS paths
   do not widen accompanying code changes; deleted compiler inputs retain full coverage.
   Frozen targets retain two paired rows for stripes 1+2 and 3+4 sequentially,
-  with stripe 5 in the central row. Keep at most two compiler children per
-  stripe and one builder per child. A failing stripe stops its row; other
+  with stripe 5 in the central row and two compiler children per stripe.
+  Keep one builder per child. A failing stripe stops its row; other
   matrix rows keep running. Pure Blacksmith and targets without stripe support
   retain the central path. Keep row caps and deadlines unchanged; measure actual
   hosted completion rather than inferring wall-time savings from partitioning.
