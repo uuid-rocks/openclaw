@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rep: [1, 2, 3]
+        rep: [4, 5, 6]
         v: [cur-1, cur-2, cur-3, cur-4, cur-5, cur-central, new-core, new-central]
     env:
       OPENCLAW_LOCAL_CHECK: "0"
