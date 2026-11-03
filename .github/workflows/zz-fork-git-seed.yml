@@ -1,0 +1,28 @@
+# FORK-ONLY measurement harness: publish the Git object seed on main for both
+# cache backends, mirroring the vitest-cache-warm producer in the PR.
+name: zz-fork-git-seed
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  seed:
+    strategy:
+      matrix:
+        runner: [blacksmith-2vcpu-ubuntu-2404, ubuntu-24.04]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: key
+        run: echo "key=openclaw-git-seed-v1-${RUNNER_OS}-${RUNNER_ARCH}-$(date -u +%Y%m%d)-$(( 10#$(date -u +%H) / 6 ))" >> "$GITHUB_OUTPUT"
+      - run: |
+          set -euo pipefail
+          seed="$RUNNER_TEMP/openclaw-git-seed"
+          rm -rf "$seed"; mkdir -p "$seed/pack"
+          cp .git/objects/pack/pack-* "$seed/pack/"
+          git rev-parse HEAD > "$seed/commit"
+          du -sh "$seed"
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/openclaw-git-seed
+          key: ${{ steps.key.outputs.key }}
