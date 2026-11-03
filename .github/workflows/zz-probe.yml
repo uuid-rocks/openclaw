@@ -1,0 +1,16 @@
+name: zz-probe
+on:
+  push:
+    branches: ["probe/**"]
+jobs:
+  probe:
+    strategy:
+      matrix:
+        runner: [blacksmith-2vcpu-ubuntu-2404, blacksmith-4vcpu-ubuntu-2404, blacksmith-8vcpu-ubuntu-2404, blacksmith-16vcpu-ubuntu-2404, blacksmith-32vcpu-ubuntu-2404, ubuntu-24.04]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - run: |
+          nproc; free -g; cat /proc/cpuinfo | grep "model name" | head -1; df -h / | tail -1
+          cat /sys/fs/cgroup/cpu.max 2>/dev/null || true
+          time (git clone --depth=1 --no-tags https://github.com/openclaw/openclaw.git /tmp/oc >/dev/null 2>&1)
+          time (git clone --depth=1 --no-tags --filter=blob:none --no-checkout https://github.com/openclaw/openclaw.git /tmp/oc2 >/dev/null 2>&1)
