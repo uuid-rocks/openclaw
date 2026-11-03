@@ -1,0 +1,41 @@
+name: zz setup parallel steps probe
+
+on:
+  push:
+    branches: ["exp/setup/parallel*"]
+
+permissions:
+  contents: read
+
+jobs:
+  parallel:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [blacksmith-2vcpu-ubuntu-2404, ubuntu-24.04]
+    steps:
+      - name: Start
+        run: date +%s.%N | tee "$RUNNER_TEMP/start"
+      - parallel:
+          - name: Sleep A
+            run: sleep 8; echo A-done
+          - name: Sleep B
+            run: sleep 8; echo B-done
+          - name: Restore a cache concurrently
+            uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+            with:
+              path: ${{ runner.temp }}/nothing
+              key: exp-setup-parallel-none
+      - name: Background step
+        id: bg
+        background: true
+        run: sleep 6; echo "bgout=1" >> "$GITHUB_OUTPUT"
+      - name: Foreground while background runs
+        run: sleep 6
+      - name: Wait
+        wait: bg
+      - name: Elapsed
+        run: |
+          echo "bg output=${{ steps.bg.outputs.bgout }}"
+          echo "elapsed $(echo "$(date +%s.%N) - $(cat "$RUNNER_TEMP/start")" | bc)s (serial would be ~28s)"
