@@ -35,6 +35,7 @@ import {
   packChangedExtensionConfigShards,
   resolveChangedExtensionRoots,
 } from "./ci-extension-test-shards.mts";
+import { EXTRA_LARGE_NODE_TEST_RUNNER } from "./ci-node-test-capacity.mts";
 import {
   canSplitWholeConfigGroup,
   listNodeTestConfigFiles,
@@ -238,6 +239,15 @@ const PR_NODE_TEST_SECONDS = 150;
 // processes starve each other on 4-vCPU runners and push otherwise healthy
 // integration tests past the global timeout.
 const SERIAL_CHANGED_TARGET_RE = /^extensions\/memory-core\//u;
+// Each case is a single-core chain of cold provisioner processes, so more CPUs
+// alone do not help. These files share one 32-vCPU-class row (8 CPUs, 31 GiB);
+// smaller classes fail the shard runner's 8-CPU/24-GiB check for overlapping
+// two target children.
+const OVERLAPPED_CHANGED_TARGETS = new Set([
+  "test/scripts/pr-worktree-provision.test.ts",
+  "test/scripts/pr-worktree-provision.hook-policy.test.ts",
+  "test/scripts/pr-worktree-provision.hook-faults.test.ts",
+]);
 const BOUNDARY_NODE_TEST_CONFIG = "test/vitest/vitest.boundary.config.ts";
 
 // Inputs `build:ci-artifacts` consumes: runtime/plugin/package sources plus
@@ -644,10 +654,18 @@ function createChangedTargetShards(
       targetChunks.push(...bins.map((bin) => bin.targets));
     }
   } else {
+    const overlapped = targets.filter(({ target }) => OVERLAPPED_CHANGED_TARGETS.has(target));
+    if (overlapped.length > 1) {
+      targetChunks.push(overlapped);
+    }
+    const ordinary =
+      overlapped.length > 1
+        ? targets.filter(({ target }) => !OVERLAPPED_CHANGED_TARGETS.has(target))
+        : targets;
     // Retain each target's prior preparation and concurrency envelope before
     // redistributing work; a shared serial row must not become parallel.
     const originalChunks: (typeof targets)[] = [];
-    for (const entry of targets) {
+    for (const entry of ordinary) {
       let chunk = originalChunks.at(-1);
       if (
         !chunk ||
@@ -672,7 +690,7 @@ function createChangedTargetShards(
     }
     // Longest-first placement avoids stranding a slow target with cheap neighbors.
     const bins: { targets: typeof targets; seconds: number; policy: string }[] = [];
-    for (const entry of targets.toSorted((a, b) => costOf(b.target) - costOf(a.target))) {
+    for (const entry of ordinary.toSorted((a, b) => costOf(b.target) - costOf(a.target))) {
       const cost = costOf(entry.target);
       const policy = JSON.stringify(inheritedPolicies.get(entry.target));
       const bin = bins.find(
@@ -696,7 +714,10 @@ function createChangedTargetShards(
       checkName: `${names.checkName}${suffix}`,
       configs: [],
       requiresDist: false,
-      runner: DEFAULT_NODE_TEST_RUNNER,
+      runner:
+        chunk.length > 1 && chunk.every(({ target }) => OVERLAPPED_CHANGED_TARGETS.has(target))
+          ? EXTRA_LARGE_NODE_TEST_RUNNER
+          : DEFAULT_NODE_TEST_RUNNER,
       shardName: `${names.shardName}${suffix}`,
       targets: chunk.map(({ target }) => target),
       predictedSeconds: Math.ceil(chunk.reduce((sum, { target }) => sum + costOf(target), 0)),
