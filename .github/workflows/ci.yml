@@ -746,6 +746,8 @@ jobs:
               # A trusted warmer publishes a shallow pack of recent main. With its commit
               # as a shallow "have", fetching the target transfers only the delta.
               # Moving the pack leaves later reset attempts on the plain fetch path.
+              if os.environ["CHECKOUT_REPO"] != os.environ.get("GITHUB_REPOSITORY"):
+                  return False
               git_dir = os.path.join(workspace, ".git")
               seed = os.path.join(os.environ.get("RUNNER_TEMP", ""), "openclaw-git-seed")
               try:
