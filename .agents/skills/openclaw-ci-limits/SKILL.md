@@ -132,6 +132,13 @@ availability, Blacksmith control-plane health, and downstream queue drains.
   only with measured end-to-end proof for a different transport, including its
   producer cost and fast-fetch regressions.
 
+- **Ratchet and checkout alternatives (2026-11-03):** Running the SQLite worker
+  ratchet's head and base analyses in parallel swapped on 15-GiB hosts (307s vs
+  143s sequential); persisting its base inventory would hit few PR bases because
+  main moves every ~2 minutes. A blobless fetch with full checkout took 64-80s
+  versus ~45s, and `useblacksmith/checkout` needed an 11-minute first mirror
+  build. Caching `.tsbuildinfo` from main gave no gain after 20-40 main commits.
+
 ## First Checks
 
 Before changing CI, collect current pressure:
@@ -337,8 +344,9 @@ These are intentionally guarded by the `ci-workflow-guards`,
   Selected baseline ratchets and Node rows start independently after preflight.
   Keep the standalone ratchet owner and exact merge-parent/base checks; the final
   gate still requires every selected ratchet to pass. Same-repository
-  hybrid first attempts use the existing 4-class for the ratchet job, with its
-  measured 91-second bound adding at most 6.07 class-vCPU-minutes and no jobs.
+  hybrid first attempts use the 16-class for the ratchet job: the SQLite worker
+  ratchet peaks near 12 GB and swapped on the 4-class (2 CPUs, 7.66 GiB), with a
+  631s median step versus 117-143s on the 16-class shape.
   Preserve the existing hosted fallbacks and deadline.
   The existing `check-plan` prerequisite uses the 16-class for shared compiler
   snapshot memory on canonical automatic first attempts with an unset,
@@ -748,7 +756,9 @@ These are intentionally guarded by the `ci-workflow-guards`,
 - Full hybrid check plans may share central formatting and scripts lint with
   existing core lint stripe 1 when its full command inventory contains only those
   commands. Retain both original core stripes, the exact central selection and
-  changed paths, sequential execution, one lint thread and the 15-minute budget.
+  changed paths, sequential execution, two lint threads and the 15-minute budget.
+  Hybrid rows split core stripes by parity, {1,3,5} and {2,4}; the former
+  {1,2}/{3,4,5} split left the second row at 482s of 653s total stripe time.
   UI, root-test and wrapper guards keep their separate central row. Require
   another remaining check row for the existing gate; targeted and other runner
   profiles retain their layout. Run shared central lint after a core failure so
