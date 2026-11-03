@@ -1,0 +1,55 @@
+name: zz setup node prune probe
+
+on:
+  push:
+    branches: ["exp/setup/node*"]
+
+permissions:
+  contents: read
+
+jobs:
+  prune:
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    strategy:
+      fail-fast: false
+      matrix:
+        old: [455a9d678baadc72410a3a532400ea3a63e1bc7b, 2a226d935937bf587e150132d97fb28cbec044c7]
+    env:
+      CI: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Node environment (no install)
+        uses: ./.github/actions/setup-node-env
+        with:
+          cache-mode: "off"
+          install-deps: "false"
+          install-bun: "false"
+      - name: Simulate prefix-seeded store, then prune
+        env:
+          OLD: ${{ matrix.old }}
+        run: |
+          set -euo pipefail
+          store="$GITHUB_WORKSPACE/.cache/openclaw-pnpm-store"
+          export PNPM_CONFIG_STORE_DIR="$store" PNPM_CONFIG_CACHE_DIR="$store/cache" PNPM_CONFIG_PACKAGE_IMPORT_METHOD=hardlink
+          git fetch -q --depth=1 origin "$OLD"
+          git worktree add -q /tmp/old FETCH_HEAD
+          (cd /tmp/old && pnpm install --frozen-lockfile --ignore-scripts --config.engine-strict=false > /tmp/old.log 2>&1) || tail -20 /tmp/old.log
+          grep -E "Packages:|Done in" /tmp/old.log || true
+          rm -rf /tmp/old/node_modules; git worktree remove --force /tmp/old
+          echo "store after old install: $(du -sh "$store" | cut -f1)"
+          pnpm install --frozen-lockfile --prefer-offline --config.engine-strict=false --config.side-effects-cache=true 2>&1 | grep -E "Packages:|Progress: resolved|Done in" | tail -3
+          measure() {
+            paths=(node_modules ui/node_modules packages/*/node_modules extensions/*/node_modules examples/*/node_modules .cache/openclaw-pnpm-store)
+            existing=(); for p in "${paths[@]}"; do [ -e "$p" ] && existing+=("$p"); done
+            tar -cf - -P "${existing[@]}" | zstd -T0 -q -o "/tmp/deps-$1.tzst"
+            echo "$1: store=$(du -sh "$store" | cut -f1) exact-archive=$(stat -c %s "/tmp/deps-$1.tzst" | numfmt --to=iec) store-only-archive=$(tar -cf - -P .cache/openclaw-pnpm-store | zstd -T0 -q | wc -c | numfmt --to=iec)"
+            mkdir -p /tmp/x; s=$(date +%s%N); tar -xf "/tmp/deps-$1.tzst" -P -C /tmp/x --use-compress-program unzstd; echo "$1: extract $(( ($(date +%s%N)-s)/1000000 ))ms"; rm -rf /tmp/x
+          }
+          measure seeded
+          pnpm store prune | tail -2
+          measure pruned
+          s=$(date +%s%N)
+          DEPENDENCY_CACHE=true DEPENDENCY_CACHE_HIT=true FROZEN_LOCKFILE=true bash .github/actions/setup-node-env/install-dependencies.sh 2>&1 | grep -E "Done in|ERR" | tail -2
+          echo "offline reconcile after prune: $(( ($(date +%s%N)-s)/1000000 ))ms"
