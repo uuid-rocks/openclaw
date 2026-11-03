@@ -1456,10 +1456,9 @@ export async function createChangedCiLintPlan(
       (stripe) => filesFor([], [stripe], []).length,
     );
     if (runnerProfile === "hybrid") {
-      for (const [index, stripes] of [
-        coreStripes.filter((stripe) => stripe % 2 === 1),
-        coreStripes.filter((stripe) => stripe % 2 === 0),
-      ].entries()) {
+      for (const [index, stripes] of [[1, 5], [4], [2, 3]]
+        .map((row) => coreStripes.filter((stripe) => row.includes(stripe)))
+        .entries()) {
         if (stripes.length) {
           core.push(row(index + 1, stripes, []));
         }

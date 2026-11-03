@@ -937,7 +937,7 @@ const fullCoreLintStripes =
   ((!releaseGate && ["push", "pull_request"].includes(eventName)) ||
     nodeRunnerBackend === "runson" ||
     ciQualification)
-    ? [1, 2]
+    ? [1, 2, 3]
     : [1, 2, 3, 4, 5];
 const coreLintRows = fullCoreLintStripes.map((stripe) => ({ stripe }));
 const compactExtensionLint =

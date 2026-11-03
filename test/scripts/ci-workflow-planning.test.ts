@@ -1532,7 +1532,7 @@ describe("ci workflow guards", () => {
             stripe,
             lint_selection_json: JSON.stringify({
               files: [changedPath],
-              coreStripes: stripe === 1 ? [1, 3, 5] : [2, 4],
+              coreStripes: [[1, 5], [4], [2, 3]][stripe - 1],
               extensionStripes: [],
               groups: [],
               central: false,
@@ -13496,7 +13496,7 @@ describe("extension lint PR admission", () => {
         expect(input.changedBaseRef).toBe("a".repeat(40));
         expect(input.preserveFullChecks).toBe(true);
         if (profile === "hybrid") {
-          expect(input.lintCoreMatrix.include).toEqual([{ stripe: 1 }, { stripe: 2 }]);
+          expect(input.lintCoreMatrix.include).toEqual([{ stripe: 1 }, { stripe: 2 }, { stripe: 3 }]);
         }
         expect(input.typeGraphBoundaryOwner).toBe("additional-checks");
         const checkRows = JSON.parse(manifest.checkPlanOutputs.check_matrix!).include as {
