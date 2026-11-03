@@ -1,0 +1,69 @@
+name: zz-tests-pc
+on:
+  push:
+    branches: ["exp/tests/plan-concurrency-validate"]
+permissions:
+  contents: read
+jobs:
+  replay:
+    name: ${{ matrix.bin }}-${{ matrix.mode }}-r${{ matrix.rep }}
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        bin: [s1, s5]
+        mode: [serial, overlap]
+        rep: [1, 2, 3]
+    steps:
+      - name: Emulate upstream 32-class shape (8 CPU / 31 GiB)
+        run: |
+          set -euo pipefail
+          emu_cpus=8; emu_mem=33229729792
+          worker_pid="$PPID"
+          sudo taskset -a -cp "0-$((emu_cpus - 1))" "$worker_pid" >/dev/null
+          sudo mkdir -p /sys/fs/cgroup/fork-shape
+          echo "+memory +cpu" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null || true
+          echo "$emu_mem" | sudo tee /sys/fs/cgroup/fork-shape/memory.max >/dev/null
+          echo "$worker_pid" | sudo tee /sys/fs/cgroup/fork-shape/cgroup.procs >/dev/null
+          mkdir -p "$RUNNER_TEMP/fork-shape"
+          printf '%s\n' "const os = require('node:os');" "os.totalmem = () => $emu_mem;" "require('node:module').syncBuiltinESMExports();" > "$RUNNER_TEMP/fork-shape/preload.cjs"
+          echo "FORK_SHAPE_PRELOAD=--require=$RUNNER_TEMP/fork-shape/preload.cjs" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Node environment
+        uses: ./.github/actions/setup-node-env
+        with:
+          semantic-checks: "true"
+          cache-mode: restore
+          install-bun: "false"
+          vitest-fs-cache: "true"
+          vitest-worker-cache: "true"
+          node-compile-cache: "true"
+      - name: Setup pinned Bun test runtime
+        uses: ./.github/actions/setup-test-bun
+      - name: Load replay env
+        run: |
+          node tests-exp/load-env.mjs tests-exp/envs/${{ matrix.bin }}-${{ matrix.mode }}.json
+          echo "RUNNER_ENVIRONMENT=self-hosted" >> "$GITHUB_ENV"
+          echo "nproc=$(nproc)"
+      - name: Configure Node test resources
+        env:
+          NODE_OPTIONS: ${{ env.FORK_SHAPE_PRELOAD }}
+        run: |
+          cores="$(nproc)"
+          if [ "$OPENCLAW_NODE_TEST_PLAN_CONCURRENCY" != "1" ]; then
+            workers=2
+          else
+            workers="$(node --input-type=module -e "import { resolveLocalVitestScheduling, detectVitestHostInfo } from './scripts/lib/vitest-local-scheduling.mts'; console.log(resolveLocalVitestScheduling(process.env, detectVitestHostInfo()).maxWorkers)")"
+          fi
+          if [ "$workers" -gt "$cores" ]; then workers="$cores"; fi
+          echo "detected cores=$cores plan_concurrency=$OPENCLAW_NODE_TEST_PLAN_CONCURRENCY -> workers=$workers"
+          echo "OPENCLAW_VITEST_MAX_WORKERS=$workers" >> "$GITHUB_ENV"
+      - name: Run Node test shard (cold)
+        continue-on-error: true
+        run: NODE_OPTIONS="$FORK_SHAPE_PRELOAD --max-old-space-size=8192" time -p node --import tsx scripts/ci-run-node-test-shard.mts
+      - name: Run Node test shard (warm)
+        continue-on-error: true
+        run: NODE_OPTIONS="$FORK_SHAPE_PRELOAD --max-old-space-size=8192" time -p node --import tsx scripts/ci-run-node-test-shard.mts
