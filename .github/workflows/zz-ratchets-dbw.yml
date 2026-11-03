@@ -9,16 +9,15 @@ concurrency:
   cancel-in-progress: true
 jobs:
   dbw:
-    name: ${{ matrix.v.scope }}-${{ matrix.v.mode }}-${{ matrix.v.runner }}-r2-s${{ matrix.sample }}
-    runs-on: blacksmith-${{ matrix.v.runner }}-ubuntu-2404
+    name: ${{ matrix.v.scope }}-${{ matrix.v.mode }}-${{ matrix.v.runner }}-r3-s${{ matrix.sample }}
+    runs-on: ${{ matrix.v.runner == 'hosted' && 'ubuntu-24.04' || format('blacksmith-{0}-ubuntu-2404', matrix.v.runner) }}
     timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
         sample: [1, 2, 3]
         v:
-          - { scope: full, mode: seq, runner: 4vcpu }
-          - { scope: full, mode: seq, runner: 8vcpu }
+          - { scope: full, mode: seq, runner: hosted }
     env:
       BASE_SHA: f6a936bd6d0674f258d767369e416430111f1aa6
       ZZ_PROF_OUT: ${{ github.workspace }}/.zz-prof.txt
