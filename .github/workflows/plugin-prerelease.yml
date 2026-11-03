@@ -694,7 +694,7 @@ jobs:
     timeout-minutes: ${{ matrix.test_runtime_policy == 'dual-all' && 120 || 60 }}
     strategy:
       fail-fast: false
-      max-parallel: 12
+      max-parallel: 15
       matrix: ${{ fromJson(needs.preflight.outputs.plugin_prerelease_extension_matrix) }}
     steps:
       - name: Checkout
