@@ -1532,7 +1532,7 @@ describe("ci workflow guards", () => {
             stripe,
             lint_selection_json: JSON.stringify({
               files: [changedPath],
-              coreStripes: [[1, 5], [4], [2, 3]][stripe - 1],
+              coreStripes: [[1, 3], [2], [4], [5]][stripe - 1],
               extensionStripes: [],
               groups: [],
               central: false,
@@ -1963,8 +1963,8 @@ describe("ci workflow guards", () => {
     );
 
     it.each([
-      { label: "hybrid PR", options: { eventName: "pull_request" }, expected: [1, 2, 3, 4, 5] },
-      { label: "hybrid main", options: { eventName: "push" }, expected: [1, 2, 3, 4, 5] },
+      { label: "hybrid PR", options: { eventName: "pull_request" }, expected: [1, 2, 3, 4] },
+      { label: "hybrid main", options: { eventName: "push" }, expected: [1, 2, 3, 4] },
       {
         label: "GitHub PR",
         options: { eventName: "pull_request", runnerProfile: "github" },
@@ -1994,7 +1994,7 @@ describe("ci workflow guards", () => {
           selectedTestTargets: ["src/cron/schedule.test.ts"],
           changedPlannerSource: undefined,
         },
-        expected: [1, 2, 3, 4, 5],
+        expected: [1, 2, 3, 4],
       },
     ] satisfies Array<{
       label: string;
@@ -13496,7 +13496,7 @@ describe("extension lint PR admission", () => {
         expect(input.changedBaseRef).toBe("a".repeat(40));
         expect(input.preserveFullChecks).toBe(true);
         if (profile === "hybrid") {
-          expect(input.lintCoreMatrix.include).toEqual([1, 2, 3, 4, 5].map((stripe) => ({ stripe })));
+          expect(input.lintCoreMatrix.include).toEqual([1, 2, 3, 4].map((stripe) => ({ stripe })));
         }
         expect(input.typeGraphBoundaryOwner).toBe("additional-checks");
         const checkRows = JSON.parse(manifest.checkPlanOutputs.check_matrix!).include as {

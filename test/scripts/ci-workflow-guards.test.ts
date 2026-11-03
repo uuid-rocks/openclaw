@@ -5272,12 +5272,12 @@ printf '%s\n' "\${CURL_SUCCESS_IP:-203.0.113.7}"
     // Manifest tests own row admission; these cases execute every full-layout stripe.
     for (const eventName of ["pull_request", "push"] as const) {
       expect(
-        [1, 2, 3, 4, 5].map((stripe) => runLintOwner({ eventName, lane: "core", stripe })),
-      ).toEqual([1, 2, 3, 4, 5].map((stripe) => coreCommands(stripe)));
+        [1, 2, 3, 4].map((stripe) => runLintOwner({ eventName, lane: "core", stripe })),
+      ).toEqual([[1, 3], [2], [4], [5]].map((stripes) => coreCommands(...stripes)));
     }
     for (const runAttempt of [1, 2]) {
       expect(
-        [1, 2, 3, 4, 5].flatMap((stripe) =>
+        [1, 2, 3, 4].flatMap((stripe) =>
           runLintOwner({
             lane: "core",
             nodeRunnerBackend: "runson",
@@ -5286,15 +5286,15 @@ printf '%s\n' "\${CURL_SUCCESS_IP:-203.0.113.7}"
             stripe,
           }),
         ),
-      ).toEqual(coreCommands(1, 2, 3, 4, 5));
+      ).toEqual(coreCommands(1, 3, 2, 4, 5));
       assertLint({ lane: "check", nodeRunnerBackend: "runson", releaseGate: true, runAttempt }, [
         scriptsCommand,
       ]);
     }
-    assertLint({ eventName: "pull_request", failStripe: 1, lane: "core" }, coreCommands(1));
+    assertLint({ eventName: "pull_request", failStripe: 1, lane: "core" }, coreCommands(1, 3));
     assertLint(
-      { eventName: "pull_request", failStripe: 3, lane: "core", stripe: 3 },
-      coreCommands(3),
+      { eventName: "pull_request", failStripe: 4, lane: "core", stripe: 3 },
+      coreCommands(4),
     );
 
     assertLint({ lane: "check", profile: "github" }, [extensionCommand(6), scriptsCommand]);

@@ -323,7 +323,7 @@ These are intentionally guarded by the `ci-workflow-guards`,
   jobs or registrations and keeps the deadline and complete stripe inventory. The gate has no checkout or dependency setup; retries, ordinary
   manual dispatches, noncanonical contexts, and the GitHub override stay hosted.
   Core lint additionally retains hosted routing for frozen targets. Normal hybrid
-  main/same-repository PRs add five lint assignments; fork PRs can add six because
+  main/same-repository PRs add four lint assignments; fork PRs can add six because
   their logical GitHub check profile emits five lint rows. These fit the fresh
   71-row union and reserved 84-row non-Node allowance described above.
   Automatic canonical RunsOn and fork hybrid first-attempt `preflight` uses
@@ -757,8 +757,8 @@ These are intentionally guarded by the `ci-workflow-guards`,
   existing core lint stripe 1 when its full command inventory contains only those
   commands. Retain both original core stripes, the exact central selection and
   changed paths, sequential execution, two lint threads and the 15-minute budget.
-  Full core lint uses one row per stripe in every profile: the former hybrid
-  {1,2}/{3,4,5} rows put 482s of 653s stripe time on the critical row.
+  Hybrid rows split core stripes {1,3}, {2}, {4} and {5} by measured cost; the
+  former {1,2}/{3,4,5} rows put 482s of 653s stripe time on the critical row.
   UI, root-test and wrapper guards keep their separate central row. Require
   another remaining check row for the existing gate; targeted and other runner
   profiles retain their layout. Run shared central lint after a core failure so

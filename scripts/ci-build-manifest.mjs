@@ -931,7 +931,15 @@ if (runCheckPlan && proposedCheckScope?.types) {
       ? "additional-checks"
       : "check-plan";
 }
-const coreLintRows = [1, 2, 3, 4, 5].map((stripe) => ({ stripe }));
+const fullCoreLintStripes =
+  runnerProfile === "hybrid" &&
+  !frozenTarget &&
+  ((!releaseGate && ["push", "pull_request"].includes(eventName)) ||
+    nodeRunnerBackend === "runson" ||
+    ciQualification)
+    ? [1, 2, 3, 4]
+    : [1, 2, 3, 4, 5];
+const coreLintRows = fullCoreLintStripes.map((stripe) => ({ stripe }));
 const compactExtensionLint =
   isCanonicalRepository &&
   runnerProfile === "hybrid" &&
