@@ -1,0 +1,55 @@
+name: zz-tests-ui
+on:
+  push:
+    branches: ["exp/tests/ui-**"]
+permissions:
+  contents: read
+jobs:
+  ui-e2e:
+    name: ${{ matrix.id }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Upstream full-suite shard 1/6 (job 125958497238): 140 files, 914s at 4 workers on the 16-class (4 CPU upstream).
+          - { id: ui-4v-w4, runner: blacksmith-4vcpu-ubuntu-2404, workers: "4" }
+          - { id: ui-16v-w4, runner: blacksmith-16vcpu-ubuntu-2404, workers: "4" }
+          - { id: ui-16v-w8, runner: blacksmith-16vcpu-ubuntu-2404, workers: "8" }
+          - { id: ui-16v-w16, runner: blacksmith-16vcpu-ubuntu-2404, workers: "16" }
+          - { id: ui-32v-w16, runner: blacksmith-32vcpu-ubuntu-2404, workers: "16" }
+          - { id: ui-32v-w32, runner: blacksmith-32vcpu-ubuntu-2404, workers: "32" }
+    env:
+      OPENCLAW_UI_E2E_SKIP_REAL_GATEWAY: "1"
+      OPENCLAW_UI_E2E_SKIP_PRODUCTION_ARTIFACT: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Node environment
+        uses: ./.github/actions/setup-node-env
+        with:
+          cache-mode: restore
+          node-version: "24.22.1"
+          install-bun: "false"
+          restore-test-caches: "true"
+      - name: Install Playwright Chromium
+        uses: ./.github/actions/setup-playwright-chromium
+      - name: Write include file
+        run: |
+          node -e 'const g=require("./tests-exp/envs/ui-e2e-groups.json")[0];require("fs").writeFileSync(process.env.RUNNER_TEMP+"/ui-e2e-include.json",JSON.stringify(g.includePatterns))'
+          echo "OPENCLAW_VITEST_INCLUDE_FILE=$RUNNER_TEMP/ui-e2e-include.json" >> "$GITHUB_ENV"
+          echo "nproc=$(nproc)"
+      - name: Test Control UI end-to-end
+        timeout-minutes: 35
+        env:
+          VITEST_SHARD_INDEX: "1"
+          VITEST_SHARD_COUNT: "6"
+          OPENCLAW_VITEST_MAX_WORKERS: ${{ matrix.workers }}
+        run: |
+          time -p node scripts/run-vitest.mjs run \
+            --config test/vitest/vitest.ui-e2e.config.ts \
+            --configLoader runner \
+            --maxWorkers "${OPENCLAW_VITEST_MAX_WORKERS}" \
+            --shard "$VITEST_SHARD_INDEX/$VITEST_SHARD_COUNT"

@@ -1,0 +1,138 @@
+name: zz-tests-node
+on:
+  push:
+    branches: ["exp/tests/node-**"]
+permissions:
+  contents: read
+concurrency:
+  group: zz-tests-node-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  shard:
+    name: ${{ matrix.id }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # s1: upstream compact-small-2 on the 32-class (8 CPU upstream)
+          - { id: s1-8v-pc1, env: s1-compact-small-2, runner: blacksmith-8vcpu-ubuntu-2404, pc: "1" }
+          - { id: s1-8v-pc2, env: s1-compact-small-2, runner: blacksmith-8vcpu-ubuntu-2404, pc: "2", maxpc: "2" }
+          - { id: s1-32v-pc1, env: s1-compact-small-2, runner: blacksmith-32vcpu-ubuntu-2404, pc: "1" }
+          - { id: s1-32v-pc4, env: s1-compact-small-2, runner: blacksmith-32vcpu-ubuntu-2404, pc: "4", maxpc: "4" }
+          - { id: s1-16v-pc4, env: s1-compact-small-2, runner: blacksmith-16vcpu-ubuntu-2404, pc: "4", maxpc: "4" }
+          - { id: s1-32v-unpin, env: s1-compact-small-2, runner: blacksmith-32vcpu-ubuntu-2404, pc: "1", unpin: "1", workers: "16" }
+          # s2: upstream extensions-bundle-10 on the 8-class (2 CPU upstream)
+          - { id: s2-2v-pc1, env: s2-ext-bundle-10, runner: blacksmith-2vcpu-ubuntu-2404, pc: "1" }
+          - { id: s2-8v-pc1, env: s2-ext-bundle-10, runner: blacksmith-8vcpu-ubuntu-2404, pc: "1" }
+          - { id: s2-8v-pc4, env: s2-ext-bundle-10, runner: blacksmith-8vcpu-ubuntu-2404, pc: "4", maxpc: "4" }
+          - { id: s2-4v-pc2, env: s2-ext-bundle-10, runner: blacksmith-4vcpu-ubuntu-2404, pc: "2", maxpc: "2" }
+          # s3: upstream checks-node-changed-1 on the 8-class (2 CPU upstream)
+          - { id: s3-2v, env: s3-changed-1, runner: blacksmith-2vcpu-ubuntu-2404, pc: "" }
+          - { id: s3-8v, env: s3-changed-1, runner: blacksmith-8vcpu-ubuntu-2404, pc: "" }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Node environment
+        uses: ./.github/actions/setup-node-env
+        with:
+          semantic-checks: "true"
+          cache-mode: restore
+          install-bun: "false"
+          vitest-fs-cache: "true"
+          vitest-worker-cache: "true"
+          node-compile-cache: "true"
+      - name: Setup pinned Bun test runtime
+        uses: ./.github/actions/setup-test-bun
+      - name: Load upstream shard env
+        env:
+          EXP_UNPIN: ${{ matrix.unpin || '' }}
+          EXP_PLAN_CONCURRENCY: ${{ matrix.pc }}
+        run: |
+          node tests-exp/load-env.mjs tests-exp/envs/${{ matrix.env }}.json
+          echo "RUNNER_ENVIRONMENT=self-hosted" >> "$GITHUB_ENV"
+          echo "OPENCLAW_EXP_MAX_PLAN_CONCURRENCY=${{ matrix.maxpc || '2' }}" >> "$GITHUB_ENV"
+          echo "nproc=$(nproc) mem=$(free -g | awk '/Mem:/{print $2}')G"
+      - name: Configure Node test resources
+        env:
+          SHARD_PLAN_CONCURRENCY: ${{ matrix.pc }}
+          EXP_WORKERS: ${{ matrix.workers || '' }}
+        run: |
+          cores="$(nproc)"
+          if [ "$SHARD_PLAN_CONCURRENCY" != "1" ]; then
+            workers=2
+          elif [ "$cores" -ge 12 ]; then
+            workers=6
+          elif [ "$cores" -ge 6 ]; then
+            workers=4
+          else
+            workers=3
+          fi
+          if [[ "$SHARD_PLAN_CONCURRENCY" == "1" ]]; then
+            workers="$(CI_LEGACY_WORKERS="$workers" node --input-type=module <<'JS'
+          import { isConstrainedCiCheckHost } from './scripts/lib/local-check-runtime.mts';
+          import { detectVitestHostInfo, resolveLocalVitestScheduling } from './scripts/lib/vitest-local-scheduling.mts';
+          const host = detectVitestHostInfo();
+          const constrained = isConstrainedCiCheckHost({
+            logicalCpuCount: host.cpuCount,
+            totalMemoryBytes: host.totalMemoryBytes,
+          });
+          console.log(String(constrained ? process.env.CI_LEGACY_WORKERS : resolveLocalVitestScheduling(process.env, host).maxWorkers));
+          JS
+            )"
+          fi
+          if [ -n "$EXP_WORKERS" ]; then workers="$EXP_WORKERS"; fi
+          if [ "$workers" -gt "$cores" ]; then workers="$cores"; fi
+          echo "detected cores=$cores plan_concurrency=${SHARD_PLAN_CONCURRENCY:-default} -> workers=$workers"
+          echo "OPENCLAW_VITEST_MAX_WORKERS=$workers" >> "$GITHUB_ENV"
+      - name: Run Node test shard (cold)
+        continue-on-error: true
+        run: time -p node --import tsx scripts/ci-run-node-test-shard.mts
+      - name: Run Node test shard (warm)
+        continue-on-error: true
+        run: time -p node --import tsx scripts/ci-run-node-test-shard.mts
+      - name: Record runner memory peak
+        if: always()
+        run: cat /sys/fs/cgroup/memory.peak 2>/dev/null || true
+
+  prw:
+    name: ${{ matrix.id }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { id: prw-2v-single, runner: blacksmith-2vcpu-ubuntu-2404, split: "1" }
+          - { id: prw-2v-split3, runner: blacksmith-2vcpu-ubuntu-2404, split: "3" }
+          - { id: prw-4v-split3, runner: blacksmith-4vcpu-ubuntu-2404, split: "3" }
+          - { id: prw-8v-single, runner: blacksmith-8vcpu-ubuntu-2404, split: "1" }
+          - { id: prw-8v-split3, runner: blacksmith-8vcpu-ubuntu-2404, split: "3" }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Node environment
+        uses: ./.github/actions/setup-node-env
+        with:
+          semantic-checks: "true"
+          cache-mode: restore
+          install-bun: "false"
+          vitest-fs-cache: "true"
+          node-compile-cache: "true"
+      - name: Select files
+        run: |
+          if [ "${{ matrix.split }}" = "1" ]; then
+            echo "PRW_FILES=test/scripts/pr-worktree-provision.test.ts" >> "$GITHUB_ENV"
+          else
+            echo "PRW_FILES=$(node tests-exp/split-pr-worktree.mjs ${{ matrix.split }})" >> "$GITHUB_ENV"
+          fi
+          echo "nproc=$(nproc)"
+      - name: Run pr-worktree-provision
+        env:
+          OPENCLAW_VITEST_MAX_WORKERS: ${{ matrix.split }}
+        run: |
+          # shellcheck disable=SC2086
+          time -p node scripts/run-vitest.mjs run --config test/vitest/vitest.infra.config.ts --maxWorkers "${{ matrix.split }}" $PRW_FILES

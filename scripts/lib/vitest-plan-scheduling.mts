@@ -1,6 +1,6 @@
 import { isConstrainedCiCheckHost } from "./local-check-runtime.mts";
 
-export const MAX_CI_VITEST_PLAN_CONCURRENCY = 2;
+export const MAX_CI_VITEST_PLAN_CONCURRENCY = Number(process.env.OPENCLAW_EXP_MAX_PLAN_CONCURRENCY || 2);
 
 export function resolveCiVitestPlanConcurrency(
   count: number,
