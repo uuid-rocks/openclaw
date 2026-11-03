@@ -4298,7 +4298,9 @@ ${step.run}`,
           // Seed objects are content-addressed fetch negotiation input, not build state.
           const preflightSeed = jobName === "preflight" && step.name === "Restore Git object seed";
           expect(String(step.if), `${jobName}: ${step.name}`).toContain(
-            preflightSeed ? "github.event_name != 'workflow_dispatch'" : "preflight.outputs.cache_mode != 'off'",
+            preflightSeed
+              ? "github.event_name != 'workflow_dispatch'"
+              : "preflight.outputs.cache_mode != 'off'",
           );
         }
         if (step.uses?.startsWith("actions/cache/save@")) {
