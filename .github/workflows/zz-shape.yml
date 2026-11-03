@@ -1,0 +1,38 @@
+name: zz-shape
+on:
+  push:
+    branches: ["probe/shape"]
+jobs:
+  probe:
+    strategy:
+      matrix:
+        runner: [blacksmith-8vcpu-ubuntu-2404, blacksmith-16vcpu-ubuntu-2404, blacksmith-32vcpu-ubuntu-2404]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - shell: bash
+        run: |
+          set -euo pipefail
+          # FORK-ONLY measurement harness: emulate the CPU/RAM shape that
+          # openclaw/openclaw's Blacksmith org receives for each label.
+          if [[ "${RUNNER_NAME:-}" =~ ^blacksmith-([0-9]+)vcpu-ubuntu ]] && [[ ! -e "$RUNNER_TEMP/.fork-shape" ]]; then
+            case "${BASH_REMATCH[1]}" in
+              2|4|8) emu_cpus=2; emu_mem_mib=7840 ;;
+              16) emu_cpus=4; emu_mem_mib=15770 ;;
+              32) emu_cpus=8; emu_mem_mib=31700 ;;
+              *) emu_cpus=""; emu_mem_mib="" ;;
+            esac
+            if [[ -n "$emu_cpus" ]]; then
+              worker_pid="$PPID"
+              sudo taskset -a -cp "0-$((emu_cpus - 1))" "$worker_pid" >/dev/null
+              sudo mkdir -p /sys/fs/cgroup/fork-shape
+              echo "+memory +cpu" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null || true
+              echo "$((emu_mem_mib * 1024 * 1024))" | sudo tee /sys/fs/cgroup/fork-shape/memory.max >/dev/null
+              echo "$worker_pid" | sudo tee /sys/fs/cgroup/fork-shape/cgroup.procs >/dev/null
+              touch "$RUNNER_TEMP/.fork-shape"
+              echo "fork-shape: label=${BASH_REMATCH[1]}vcpu emulated cpus=$emu_cpus mem_mib=$emu_mem_mib worker=$worker_pid"
+            fi
+          fi
+      - run: |
+          nproc; node -e 'console.log(require("os").availableParallelism(), require("os").cpus().length, require("os").totalmem()/2**30)'; cat /proc/self/cgroup; cat /sys/fs/cgroup/fork-shape/memory.max
+          python3 -c "import os; print(len(os.sched_getaffinity(0)))"
+          timeout 20 python3 -c "x=bytearray(12*2**30); print('alloc ok')" || echo alloc-failed
