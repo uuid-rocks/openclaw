@@ -4568,7 +4568,7 @@ jobs:
           set -euo pipefail
           source .ci-harness/scripts/ci-static-step.sh oxlint
           run_static_check node --import tsx scripts/run-oxlint-shards.mts \
-            --only=extensions --extension-stripe="$EXTENSION_STRIPE/$EXTENSION_STRIPE_COUNT" --threads=1
+            --only=extensions --extension-stripe="$EXTENSION_STRIPE/$EXTENSION_STRIPE_COUNT" --threads=2
           finish_static_checks
 
       - *save_hosted_sdk_step
