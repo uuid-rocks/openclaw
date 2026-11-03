@@ -430,6 +430,9 @@ let runUiTests =
     !docsOnly &&
     !nodeDataOnly &&
     !releaseFastLane);
+if (!docsOnly && changedPaths !== null) {
+  (await import(fromTarget("./scripts/test-projects.test-support.mts"))).warmImportGraphEdges?.();
+}
 // The UI owner graph also covers protocol and Gateway-served inputs
 // outside ui/. Ordinary UI test leaves retain their cheaper unit owner.
 const selectUiE2eFamily = (family) =>
