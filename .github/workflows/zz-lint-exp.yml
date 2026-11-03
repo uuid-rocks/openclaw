@@ -15,31 +15,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rep: [1, 2]
+        rep: [1, 2, 3]
         v:
-          - lint-4-gotune
+          - lint-4-serial
           - lint-8-multi
-          - lint-8-unsplit
-          - lint-32-unsplit
           - types-8-all-c4
-          - types-8-all-c2
-          - tc-4-a20
-          - tc-4-a40
-          - tc-16-a20
-          - tc-16-err
-          - tc-16-errcold
+          - chg-4-serial
+          - chg-8-multi
         include:
-          - { v: lint-4-gotune, runner: blacksmith-4vcpu-ubuntu-2404 }
+          - { v: lint-4-serial, runner: blacksmith-4vcpu-ubuntu-2404 }
           - { v: lint-8-multi, runner: blacksmith-8vcpu-ubuntu-2404 }
-          - { v: lint-8-unsplit, runner: blacksmith-8vcpu-ubuntu-2404 }
-          - { v: lint-32-unsplit, runner: blacksmith-32vcpu-ubuntu-2404 }
           - { v: types-8-all-c4, runner: blacksmith-8vcpu-ubuntu-2404 }
-          - { v: types-8-all-c2, runner: blacksmith-8vcpu-ubuntu-2404 }
-          - { v: tc-4-a20, runner: blacksmith-4vcpu-ubuntu-2404 }
-          - { v: tc-4-a40, runner: blacksmith-4vcpu-ubuntu-2404 }
-          - { v: tc-16-a20, runner: blacksmith-16vcpu-ubuntu-2404 }
-          - { v: tc-16-err, runner: blacksmith-16vcpu-ubuntu-2404 }
-          - { v: tc-16-errcold, runner: blacksmith-16vcpu-ubuntu-2404 }
+          - { v: chg-4-serial, runner: blacksmith-4vcpu-ubuntu-2404 }
+          - { v: chg-8-multi, runner: blacksmith-8vcpu-ubuntu-2404 }
     env:
       OPENCLAW_LOCAL_CHECK: "0"
     steps:
@@ -95,7 +83,12 @@ jobs:
           }
           inject() { sed -i 's/export function shortenHomePath(input: string): string/export function shortenHomePath(input: string, _required: number): string/' src/utils.ts; git diff --stat; }
           start=$(date +%s)
+          files='["src/gateway/active-sessions-shutdown-drain.ts","src/gateway/active-sessions-shutdown-tracker.ts","src/agents/accepted-session-spawn.ts","src/infra/abort-signal.ts","src/cli/account-selector-boundary.test.ts","ui/src/app/app-host.tsx","src/config/agent-dirs.fs-identity.test.ts"]'
           case "$V" in
+            chg-*-serial)
+              for s in 1 2 3 4 5; do t lint --only=core --split-core --core-stripe="$s/5" --files-json "$files" --threads=1; done ;;
+            chg-*-multi)
+              t lint --only=core --split-core "${all_stripes[@]}" --files-json "$files" --threads=1 ;;
             lint-4-gotune)
               for s in 1 2 3 4 5; do GOMAXPROCS=4 GOGC=100 GOMEMLIMIT=10GiB t lint --only=core --split-core --core-stripe="$s/5" --threads=1; done ;;
             tc-4-a20) tc 21 2 ;;
