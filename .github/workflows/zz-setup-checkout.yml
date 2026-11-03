@@ -1,0 +1,150 @@
+name: zz setup checkout probe
+
+on:
+  push:
+    branches: ["exp/setup/checkout*"]
+
+permissions:
+  contents: read
+
+env:
+  SEED_2H: 974f1533bcb754bf5c9020860ce2b671c610905c
+  SEED_1D: 67416fcc273715af02c827f1736f665d67991982
+
+jobs:
+  seed:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2h, 1d]
+    steps:
+      - name: Restore seed
+        id: restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/gitseed
+          key: exp-setup-gitseed-v1-${{ matrix.seed }}
+          lookup-only: true
+      - name: Build seed
+        if: steps.restore.outputs.cache-hit != 'true'
+        env:
+          TOKEN: ${{ github.token }}
+          SEED: ${{ matrix.seed == '2h' && env.SEED_2H || env.SEED_1D }}
+        run: |
+          set -euo pipefail
+          d="$RUNNER_TEMP/gitseed"
+          git init -q "$d"
+          cd "$d"
+          git config gc.auto 0
+          git remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+          auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+          time git -c http.extraheader="$auth" -c protocol.version=2 fetch --no-tags --depth=1 origin "+$SEED:refs/remotes/origin/seed"
+          du -sh .git
+          ls -la .git/objects/pack
+      - name: Save seed
+        if: steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/gitseed
+          key: exp-setup-gitseed-v1-${{ matrix.seed }}
+
+  probe:
+    needs: seed
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [blacksmith-4vcpu-ubuntu-2404]
+        variant: [full, blobless, cached-2h, cached-1d, bs-checkout]
+        sample: [1, 2, 3]
+    steps:
+      - name: Environment
+        run: |
+          nproc; git --version
+          git config --system -l 2>/dev/null || true
+          git config --global -l 2>/dev/null || true
+          env | grep -i -E 'proxy|^BLACKSMITH_REGION|GIT_' | grep -v -i token || true
+          getent hosts github.com || true
+      - name: Write timing helper
+        run: |
+          cat > "$RUNNER_TEMP/gt.py" <<'EOF'
+          import subprocess, sys, time, re
+          start = time.monotonic()
+          proc = subprocess.Popen(sys.argv[1:], stderr=subprocess.PIPE)
+          buf = b""; last_phase = None; last = ""
+          def emit(line):
+              global last_phase, last
+              phase = re.sub(r"[:\s]+\d.*$", "", line)
+              if phase != last_phase:
+                  if last: print(f"  {time.monotonic()-start:7.2f}s (end) {last}", flush=True)
+                  print(f"  {time.monotonic()-start:7.2f}s {line}", flush=True)
+                  last_phase = phase
+              last = line
+          while True:
+              ch = proc.stderr.read(1)
+              if not ch: break
+              if ch in (b"\r", b"\n"):
+                  if buf.strip(): emit(buf.decode(errors="replace").strip())
+                  buf = b""
+              else:
+                  buf += ch
+          rc = proc.wait()
+          if last: print(f"  {time.monotonic()-start:7.2f}s (final) {last}", flush=True)
+          print(f"TOTAL {time.monotonic()-start:.2f}s rc={rc}", flush=True)
+          sys.exit(rc)
+          EOF
+      - name: Restore seed
+        if: startsWith(matrix.variant, 'cached-')
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/gitseed
+          key: exp-setup-gitseed-v1-${{ matrix.variant == 'cached-2h' && '2h' || '1d' }}
+          fail-on-cache-miss: true
+      - name: Checkout (useblacksmith/checkout)
+        if: matrix.variant == 'bs-checkout'
+        uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
+        with:
+          fetch-depth: 1
+          verbose: true
+      - name: Checkout (git)
+        if: matrix.variant != 'bs-checkout'
+        env:
+          TOKEN: ${{ github.token }}
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          set -euo pipefail
+          ws="$GITHUB_WORKSPACE"
+          auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+          t0=$(date +%s.%N)
+          if [[ "$VARIANT" == cached-* ]]; then
+            rm -rf "$ws/.git"
+            mv "$RUNNER_TEMP/gitseed/.git" "$ws/.git"
+          else
+            git init -q "$ws"
+          fi
+          cd "$ws"
+          git config gc.auto 0
+          git remote get-url origin >/dev/null 2>&1 || git remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+          filter=()
+          if [ "$VARIANT" = blobless ]; then filter=(--filter=blob:none); fi
+          t1=$(date +%s.%N)
+          echo "== fetch"
+          python3 "$RUNNER_TEMP/gt.py" git -c http.extraheader="$auth" -c protocol.version=2 fetch --progress --no-tags --prune --no-recurse-submodules --depth=1 "${filter[@]}" origin "+$GITHUB_SHA:refs/remotes/origin/checkout"
+          t2=$(date +%s.%N)
+          echo "== checkout"
+          python3 "$RUNNER_TEMP/gt.py" git -c http.extraheader="$auth" checkout --progress --detach refs/remotes/origin/checkout
+          t3=$(date +%s.%N)
+          git count-objects -vH
+          ls -la .git/objects/pack
+          git ls-files | wc -l
+          printf 'TIMING variant=%s prep=%.2f fetch=%.2f checkout=%.2f total=%.2f\n' "$VARIANT" \
+            "$(echo "$t1-$t0" | bc)" "$(echo "$t2-$t1" | bc)" "$(echo "$t3-$t2" | bc)" "$(echo "$t3-$t0" | bc)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Verify tree
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git ls-files | wc -l
+          git status --porcelain | head -5
+          test -f .github/actions/setup-node-env/action.yml
