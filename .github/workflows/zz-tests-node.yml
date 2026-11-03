@@ -16,21 +16,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # s1: upstream compact-small-2 on the 32-class (8 CPU upstream)
           - { id: s1-8v-pc1, env: s1-compact-small-2, runner: blacksmith-8vcpu-ubuntu-2404, pc: "1" }
           - { id: s1-8v-pc2, env: s1-compact-small-2, runner: blacksmith-8vcpu-ubuntu-2404, pc: "2", maxpc: "2" }
+          - { id: s1-8v-pc4, env: s1-compact-small-2, runner: blacksmith-8vcpu-ubuntu-2404, pc: "4", maxpc: "4" }
           - { id: s1-32v-pc1, env: s1-compact-small-2, runner: blacksmith-32vcpu-ubuntu-2404, pc: "1" }
           - { id: s1-32v-pc4, env: s1-compact-small-2, runner: blacksmith-32vcpu-ubuntu-2404, pc: "4", maxpc: "4" }
+          - { id: s1-32v-pc8, env: s1-compact-small-2, runner: blacksmith-32vcpu-ubuntu-2404, pc: "8", maxpc: "8" }
           - { id: s1-16v-pc4, env: s1-compact-small-2, runner: blacksmith-16vcpu-ubuntu-2404, pc: "4", maxpc: "4" }
-          - { id: s1-32v-unpin, env: s1-compact-small-2, runner: blacksmith-32vcpu-ubuntu-2404, pc: "1", unpin: "1", workers: "16" }
-          # s2: upstream extensions-bundle-10 on the 8-class (2 CPU upstream)
           - { id: s2-2v-pc1, env: s2-ext-bundle-10, runner: blacksmith-2vcpu-ubuntu-2404, pc: "1" }
           - { id: s2-8v-pc1, env: s2-ext-bundle-10, runner: blacksmith-8vcpu-ubuntu-2404, pc: "1" }
           - { id: s2-8v-pc4, env: s2-ext-bundle-10, runner: blacksmith-8vcpu-ubuntu-2404, pc: "4", maxpc: "4" }
-          - { id: s2-4v-pc2, env: s2-ext-bundle-10, runner: blacksmith-4vcpu-ubuntu-2404, pc: "2", maxpc: "2" }
-          # s3: upstream checks-node-changed-1 on the 8-class (2 CPU upstream)
-          - { id: s3-2v, env: s3-changed-1, runner: blacksmith-2vcpu-ubuntu-2404, pc: "" }
-          - { id: s3-8v, env: s3-changed-1, runner: blacksmith-8vcpu-ubuntu-2404, pc: "" }
+          - { id: s2-16v-pc8, env: s2-ext-bundle-10, runner: blacksmith-16vcpu-ubuntu-2404, pc: "8", maxpc: "8" }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
