@@ -1701,9 +1701,9 @@ AFTER_CD
     expect(job["timeout-minutes"]).toBe(115);
     expect(job.permissions).toEqual({ contents: "read" });
     expect(job.strategy).toBeUndefined();
-    expect(job.steps[0]).toEqual(jobs["build-artifacts"].steps[0]);
-    expect(job.steps[1].uses).toBe("./.ci-harness/.github/actions/setup-node-env");
-    expect(job.steps[1].with).toMatchObject({
+    expect(job.steps.slice(0, 2)).toEqual(jobs["build-artifacts"].steps.slice(0, 2));
+    expect(job.steps[2].uses).toBe("./.ci-harness/.github/actions/setup-node-env");
+    expect(job.steps[2].with).toMatchObject({
       "build-all-cache-scope": "full",
       "cache-mode": "${{ needs.preflight.outputs.cache_mode }}",
     });
