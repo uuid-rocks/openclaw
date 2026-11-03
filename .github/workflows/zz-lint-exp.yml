@@ -1,0 +1,108 @@
+name: zz-lint-exp
+on:
+  push:
+    branches: ["exp/lint/**"]
+permissions:
+  contents: read
+concurrency:
+  group: zz-lint-exp-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  exp:
+    name: ${{ matrix.v }} r${{ matrix.rep }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        rep: [1, 2]
+        v:
+          - lint-4-serial
+          - lint-8-multi
+          - lint-16-serial
+          - lint-16-multi
+          - lint-16-multi-c9
+          - lint-16-unsplit
+          - lint-32-multi-c9
+          - types-4-stripe3
+          - types-8-all-c4
+          - types-16-stripe3
+          - types-16-all-c4
+          - types-16-all-c8
+          - types-32-all-c16
+          - types-16-incr
+        include:
+          - { v: lint-4-serial, runner: blacksmith-4vcpu-ubuntu-2404 }
+          - { v: lint-8-multi, runner: blacksmith-8vcpu-ubuntu-2404 }
+          - { v: lint-16-serial, runner: blacksmith-16vcpu-ubuntu-2404 }
+          - { v: lint-16-multi, runner: blacksmith-16vcpu-ubuntu-2404 }
+          - { v: lint-16-multi-c9, runner: blacksmith-16vcpu-ubuntu-2404 }
+          - { v: lint-16-unsplit, runner: blacksmith-16vcpu-ubuntu-2404 }
+          - { v: lint-32-multi-c9, runner: blacksmith-32vcpu-ubuntu-2404 }
+          - { v: types-4-stripe3, runner: blacksmith-4vcpu-ubuntu-2404 }
+          - { v: types-8-all-c4, runner: blacksmith-8vcpu-ubuntu-2404 }
+          - { v: types-16-stripe3, runner: blacksmith-16vcpu-ubuntu-2404 }
+          - { v: types-16-all-c4, runner: blacksmith-16vcpu-ubuntu-2404 }
+          - { v: types-16-all-c8, runner: blacksmith-16vcpu-ubuntu-2404 }
+          - { v: types-32-all-c16, runner: blacksmith-32vcpu-ubuntu-2404 }
+          - { v: types-16-incr, runner: blacksmith-16vcpu-ubuntu-2404 }
+    env:
+      OPENCLAW_LOCAL_CHECK: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Setup Node environment
+        uses: ./.github/actions/setup-node-env
+        with:
+          semantic-checks: "true"
+          cache-mode: restore
+          install-bun: "false"
+          dependency-cache: "true"
+      - name: Experiment
+        shell: bash
+        env:
+          V: ${{ matrix.v }}
+        run: |
+          set -euo pipefail
+          echo "nproc=$(nproc) mem=$(free -g | awk '/Mem:/{print $2}')G"
+          peak=0
+          ( while true; do awk '/MemTotal/{t=$2}/MemAvailable/{a=$2}END{print (t-a)/1048576}' /proc/meminfo >> /tmp/mem.txt; sleep 2; done ) &
+          sampler=$!
+          t() { local s=$(date +%s) rc=0; echo "::group::$*"; TIMEFORMAT="[time] %R s wall, %U user, %S sys"; time "$@" || rc=$?; echo "::endgroup::"; echo "[step] $(( $(date +%s) - s ))s rc=$rc :: $*"; }
+          lint() { node --import tsx scripts/run-oxlint-shards.mts "$@"; }
+          types() { node scripts/run-tsgo-core-test-shards.mjs "$@"; }
+          all_stripes=(--core-stripe=1/5 --core-stripe=2/5 --core-stripe=3/5 --core-stripe=4/5 --core-stripe=5/5)
+          start=$(date +%s)
+          case "$V" in
+            lint-*-serial)
+              for s in 1 2 3 4 5; do t lint --only=core --split-core --core-stripe="$s/5" --threads=1; done ;;
+            lint-*-multi)
+              t lint --only=core --split-core "${all_stripes[@]}" --threads=1 ;;
+            lint-*-multi-c9)
+              OPENCLAW_OXLINT_SHARD_CONCURRENCY=9 t lint --only=core --split-core "${all_stripes[@]}" --threads=1 ;;
+            lint-*-unsplit)
+              t lint --only=core ;;
+            types-*-stripe3)
+              t types --stripe 3/5 --concurrency 2
+              t env OPENCLAW_LOCAL_CHECK=0 node scripts/run-tsgo-core-test-shards.mjs --root-stripe 2/4 ;;
+            types-*-all-c4)
+              t types --stripe 1-5/5 --concurrency 4
+              t types --root-stripe 1/1 ;;
+            types-*-all-c8)
+              t types --stripe 1-5/5 --concurrency 8
+              OPENCLAW_EXP_ROOT_OVERLAP=1 t types --root-stripe 1/1 --concurrency 4 ;;
+            types-*-all-c16)
+              t types --stripe 1-5/5 --concurrency 16
+              OPENCLAW_EXP_ROOT_OVERLAP=1 t types --root-stripe 1/1 --concurrency 4 ;;
+            types-*-incr)
+              t types --stripe 3/5 --concurrency 2
+              ls -la .artifacts/tsgo-cache 2>/dev/null || true
+              find . -name '*.tsbuildinfo' -newer package.json -not -path './node_modules/*' 2>/dev/null | head -20
+              t types --stripe 3/5 --concurrency 2 ;;
+          esac
+          kill $sampler || true
+          echo "[total] $(( $(date +%s) - start ))s"
+          echo "[mem] peak used $(sort -n /tmp/mem.txt | tail -1) GiB"

@@ -378,12 +378,13 @@ export async function main(
     splitCore: shardArgs.splitCore,
     splitExtensions,
   });
-  const stripedShards = selectExtensionOxlintStripe(
-    selectCoreOxlintStripe(filterOxlintShards(shards, shardArgs.only), shardArgs.coreStripe, {
-      isolateLargeTargets: true,
-    }),
-    shardArgs.extensionStripe,
-  );
+  const onlyShards = filterOxlintShards(shards, shardArgs.only);
+  const coreSelected = shardArgs.coreStripes.length
+    ? shardArgs.coreStripes.flatMap((stripe) =>
+        selectCoreOxlintStripe(onlyShards, stripe, { isolateLargeTargets: true }),
+      )
+    : onlyShards;
+  const stripedShards = selectExtensionOxlintStripe(coreSelected, shardArgs.extensionStripe);
   const selectedShards = shardArgs.extensionRoots
     ? createOxlintExtensionRootScope(shardArgs.extensionRoots).selectShards(stripedShards)
     : shardArgs.files
@@ -483,7 +484,7 @@ function resolveHostResources(hostResources?: HostResources) {
 export function parseShardRunnerArgs(args: string[]) {
   const only = new Set<string>();
   const oxlintArgs: string[] = [];
-  let coreStripe: ShardStripe | undefined;
+  const coreStripes: ShardStripe[] = [];
   let extensionStripe: ShardStripe | undefined;
   let splitCore = false;
   let files: string[] | undefined;
@@ -525,12 +526,12 @@ export function parseShardRunnerArgs(args: string[]) {
       continue;
     }
     if (arg === "--core-stripe") {
-      coreStripe = parseShardStripe(args[index + 1], "--core-stripe");
+      coreStripes.push(parseShardStripe(args[index + 1], "--core-stripe"));
       index += 1;
       continue;
     }
     if (arg.startsWith("--core-stripe=")) {
-      coreStripe = parseShardStripe(arg.slice("--core-stripe=".length), "--core-stripe");
+      coreStripes.push(parseShardStripe(arg.slice("--core-stripe=".length), "--core-stripe"));
       continue;
     }
     if (arg === "--extension-stripe") {
@@ -557,14 +558,14 @@ export function parseShardRunnerArgs(args: string[]) {
     oxlintArgs.push(arg);
   }
 
-  if (coreStripe && !splitCore) {
+  if (coreStripes.length && !splitCore) {
     throw new Error("--core-stripe requires --split-core");
   }
   if (extensionRoots && (files || only.size !== 1 || !only.has("extensions"))) {
     throw new Error("--extension-roots-json requires --only=extensions without --files-json");
   }
   return {
-    coreStripe,
+    coreStripes,
     extensionStripe,
     only,
     oxlintArgs,

@@ -68,7 +68,8 @@ async function runTsgoCoreTestShards(
   const isRootPartition = (graph: { config: string }) =>
     TSGO_ROOT_TEST_SHARDS.some((root) => root.config === graph.config);
   const hasRootPartitions = executionGraphs.some(isRootPartition);
-  const concurrency = hasRootPartitions ? 1 : (options.concurrency ?? 1);
+  const concurrency =
+    hasRootPartitions && process.env.OPENCLAW_EXP_ROOT_OVERLAP !== "1" ? 1 : (options.concurrency ?? 1);
   const env = resolveLocalCheckEnv(options.env ?? process.env);
   const evidenceMode = env.OPENCLAW_CI_STATIC_EVIDENCE === "1" && process.platform !== "win32";
   const ci = isCiLikeEnv(env);
@@ -234,7 +235,7 @@ if (isDirectRunUrl(process.argv[1], import.meta.url)) {
   if (concurrencyFlagIndex >= 0) {
     const rawConcurrency = process.argv[concurrencyFlagIndex + 1] ?? "";
     concurrency = Number(rawConcurrency);
-    if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 4) {
+    if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 16) {
       console.error(`Invalid shard concurrency (expected 1-4): ${rawConcurrency}`);
       process.exit(1);
     }
@@ -270,6 +271,7 @@ if (isDirectRunUrl(process.argv[1], import.meta.url)) {
     }
     process.exitCode = await runTsgoCoreTestShards(
       TSGO_ROOT_TEST_SHARDS.filter((_, offset) => offset % count === index - 1),
+      { concurrency },
     );
   } else if (ciGraphsIndex >= 0) {
     const names: unknown = JSON.parse(process.argv[ciGraphsIndex + 1] ?? "null");
