@@ -4,35 +4,19 @@ on:
     branches: ["probe/shape"]
 jobs:
   probe:
-    strategy:
-      matrix:
-        runner: [blacksmith-8vcpu-ubuntu-2404, blacksmith-16vcpu-ubuntu-2404, blacksmith-32vcpu-ubuntu-2404]
-    runs-on: ${{ matrix.runner }}
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     steps:
       - shell: bash
         run: |
           set -euo pipefail
-          # FORK-ONLY measurement harness: emulate the CPU/RAM shape that
-          # openclaw/openclaw's Blacksmith org receives for each label.
-          if [[ "${RUNNER_NAME:-}" =~ ^blacksmith-([0-9]+)vcpu-ubuntu ]] && [[ ! -e "$RUNNER_TEMP/.fork-shape" ]]; then
-            case "${BASH_REMATCH[1]}" in
-              2|4|8) emu_cpus=2; emu_mem_mib=7840 ;;
-              16) emu_cpus=4; emu_mem_mib=15770 ;;
-              32) emu_cpus=8; emu_mem_mib=31700 ;;
-              *) emu_cpus=""; emu_mem_mib="" ;;
-            esac
-            if [[ -n "$emu_cpus" ]]; then
-              worker_pid="$PPID"
-              sudo taskset -a -cp "0-$((emu_cpus - 1))" "$worker_pid" >/dev/null
-              sudo mkdir -p /sys/fs/cgroup/fork-shape
-              echo "+memory +cpu" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null || true
-              echo "$((emu_mem_mib * 1024 * 1024))" | sudo tee /sys/fs/cgroup/fork-shape/memory.max >/dev/null
-              echo "$worker_pid" | sudo tee /sys/fs/cgroup/fork-shape/cgroup.procs >/dev/null
-              touch "$RUNNER_TEMP/.fork-shape"
-              echo "fork-shape: label=${BASH_REMATCH[1]}vcpu emulated cpus=$emu_cpus mem_mib=$emu_mem_mib worker=$worker_pid"
-            fi
-          fi
+          emu_mem=16535624089
+          kib=$((emu_mem / 1024))
+          awk -v t="$kib" '
+            /^MemTotal:/ {printf "MemTotal:       %d kB\n", t; next}
+            /^MemFree:/ || /^MemAvailable:/ {printf "%-16s%d kB\n", $1, t*9/10; next}
+            {print}' /proc/meminfo > "$RUNNER_TEMP/meminfo"
+          sudo mount --bind "$RUNNER_TEMP/meminfo" /proc/meminfo
+          head -3 /proc/meminfo
       - run: |
-          nproc; node -e 'console.log(require("os").availableParallelism(), require("os").cpus().length, require("os").totalmem()/2**30)'; cat /proc/self/cgroup; cat /sys/fs/cgroup/fork-shape/memory.max
-          python3 -c "import os; print(len(os.sched_getaffinity(0)))"
-          timeout 20 python3 -c "x=bytearray(12*2**30); print('alloc ok')" || echo alloc-failed
+          free -g | head -2; node -p 'require("os").totalmem()/2**30'; python3 -c "import os; print(os.sysconf('SC_PHYS_PAGES')*os.sysconf('SC_PAGE_SIZE')/2**30)"
+          go version 2>/dev/null || true
