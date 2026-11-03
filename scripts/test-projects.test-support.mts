@@ -6230,3 +6230,4 @@ export function formatFailedShardDigest(failures: FailedVitestShard[]) {
   }
   return lines;
 }
+// ci-speedup marker

@@ -192,3 +192,5 @@ conservative watch covers new, renamed, and deleted modules and new import edges
 including dependencies missing from the inventory that should have named them.
 The existing required architecture group still checks source diffs for import
 cycles and topology changes.
+
+<!-- ci-speedup marker -->

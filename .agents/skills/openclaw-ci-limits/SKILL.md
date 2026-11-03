@@ -886,3 +886,5 @@ Report:
 - publication net drain/dead letters, state-writer queued/waiting, and state
   append rows/bytes/oldest item;
 - any real failures that remain outside runner registration.
+
+<!-- ci-speedup marker -->

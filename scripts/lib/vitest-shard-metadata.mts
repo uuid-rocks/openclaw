@@ -388,3 +388,4 @@ export function estimateVitestToolingFileSeconds(
 export function estimateVitestTestFileSeconds(file: string): number {
   return STRIPE_FILE_SECONDS_HINTS.get(file) ?? DEFAULT_STRIPE_FILE_SECONDS;
 }
+// ci-speedup marker

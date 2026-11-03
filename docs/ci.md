@@ -642,3 +642,5 @@ existing `unit-fast` Vitest invocations after runtime selection. It adds no matr
 rows, runner registrations or skipped tests. Its isolated dependency cache and
 artifact upload add measurable overhead; projected selection savings are not
 realized savings.
+
+<!-- ci-speedup marker -->

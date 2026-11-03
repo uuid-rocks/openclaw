@@ -146,3 +146,4 @@ jobs:
           key: barnacle-lifecycle-scan-v2-${{ github.run_id }}-${{ github.run_attempt }}
           lookup-only: true
           fail-on-cache-miss: true
+# ci-speedup marker

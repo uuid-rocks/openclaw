@@ -1997,3 +1997,4 @@ export async function main(argv = process.argv.slice(2)) {
 if (isDirectRun()) {
   await runWithFailedTrailer("check:changed", main);
 }
+// ci-speedup marker

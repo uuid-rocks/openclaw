@@ -1047,3 +1047,4 @@ if (isDirectRunUrl(process.argv[1], import.meta.url)) {
   const plans = resolveShardPlans();
   process.exitCode = await runShardPlans(plans);
 }
+// ci-speedup marker

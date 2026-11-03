@@ -201,3 +201,4 @@ export function expectProtectedOwnerExpansion(
   ).toEqual([]);
   expect(new Set(files).size).toBe(files.length);
 }
+// ci-speedup marker

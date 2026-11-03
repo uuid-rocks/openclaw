@@ -1256,3 +1256,4 @@ describe("scripts/ci-run-node-test-shard.mts", () => {
     expect({ code, calls }).toEqual({ code: 2, calls: [] });
   });
 });
+// ci-speedup marker

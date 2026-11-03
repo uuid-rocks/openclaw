@@ -334,3 +334,4 @@ it.each([
   expect(run.stderr).toContain(error);
   expect(outputs).toEqual({});
 });
+// ci-speedup marker

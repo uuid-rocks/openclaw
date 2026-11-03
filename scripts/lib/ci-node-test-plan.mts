@@ -5587,3 +5587,4 @@ function createCompactNodeTestShardBundles(
   }
   return measuredJobs.toSorted((a, b) => a.checkName.localeCompare(b.checkName));
 }
+// ci-speedup marker
