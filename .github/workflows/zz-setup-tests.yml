@@ -1,0 +1,29 @@
+name: zz setup tests
+
+on:
+  push:
+    branches: ["exp/setup/tests*"]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: blacksmith-16vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-env
+        with:
+          cache-mode: restore
+          dependency-cache: "true"
+          install-bun: "false"
+      - name: Generated owner projection
+        run: node scripts/generate-ci-git-owner.mts --check
+      - name: Workflow and owner tests
+        run: |
+          set -o pipefail
+          files=$(ls test/scripts/ci-git-owner*.test.ts test/scripts/ci-workflow-*.test.ts test/scripts/ci-warm-vitest-caches.test.ts test/scripts/*setup-node*.test.ts 2>/dev/null | tr '\n' ' ')
+          echo "$files"
+          pnpm exec vitest run --config test/vitest/vitest.scripts.config.ts $files 2>&1 | tail -80 || pnpm exec vitest run $files 2>&1 | tail -80
