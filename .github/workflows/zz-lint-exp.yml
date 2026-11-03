@@ -15,15 +15,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rep: [1, 2]
+        rep: [1, 2, 3]
         v:
-          - lint-4-s45-t1
-          - lint-4-s45-t2
-          - lint-4-s45-t4
+          - row-cur-a
+          - row-cur-b
+          - row-new-a
+          - row-new-b
+          - ext-h-t1
+          - ext-h-t2
         include:
-          - { v: lint-4-s45-t1, runner: blacksmith-4vcpu-ubuntu-2404 }
-          - { v: lint-4-s45-t2, runner: blacksmith-4vcpu-ubuntu-2404 }
-          - { v: lint-4-s45-t4, runner: blacksmith-4vcpu-ubuntu-2404 }
+          - { v: row-cur-a, runner: blacksmith-4vcpu-ubuntu-2404 }
+          - { v: row-cur-b, runner: blacksmith-4vcpu-ubuntu-2404 }
+          - { v: row-new-a, runner: blacksmith-4vcpu-ubuntu-2404 }
+          - { v: row-new-b, runner: blacksmith-4vcpu-ubuntu-2404 }
+          - { v: ext-h-t1, runner: ubuntu-24.04 }
+          - { v: ext-h-t2, runner: ubuntu-24.04 }
     env:
       OPENCLAW_LOCAL_CHECK: "0"
     steps:
@@ -81,6 +87,13 @@ jobs:
           start=$(date +%s)
           files='["src/gateway/active-sessions-shutdown-drain.ts","src/gateway/active-sessions-shutdown-tracker.ts","src/agents/accepted-session-spawn.ts","src/infra/abort-signal.ts","src/cli/account-selector-boundary.test.ts","ui/src/app/app-host.tsx","src/config/agent-dirs.fs-identity.test.ts"]'
           case "$V" in
+            row-cur-a) for s in 1 2; do t lint --only=core --split-core --core-stripe="$s/5" --threads=1; done ;;
+            row-cur-b) for s in 3 4 5; do t lint --only=core --split-core --core-stripe="$s/5" --threads=1; done ;;
+            row-new-a) for s in 1 3 5; do t lint --only=core --split-core --core-stripe="$s/5" --threads=2; done ;;
+            row-new-b) for s in 2 4; do t lint --only=core --split-core --core-stripe="$s/5" --threads=2; done ;;
+            ext-h-t*)
+              th="${V##*-t}"
+              t lint --only=extensions --extension-stripe=1/3 --threads="$th" ;;
             lint-4-s45-t*)
               th="${V##*-t}"
               for s in 4 5; do t lint --only=core --split-core --core-stripe="$s/5" --threads="$th"; done ;;
