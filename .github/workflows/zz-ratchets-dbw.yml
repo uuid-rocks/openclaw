@@ -9,14 +9,14 @@ concurrency:
   cancel-in-progress: true
 jobs:
   dbw:
-    name: ${{ matrix.scope }}-${{ matrix.mode }}-${{ matrix.runner }}-s${{ matrix.sample }}
-    runs-on: blacksmith-${{ matrix.runner }}-ubuntu-2404
+    name: ${{ matrix.v.scope }}-${{ matrix.v.mode }}-${{ matrix.v.runner }}-s${{ matrix.sample }}
+    runs-on: blacksmith-${{ matrix.v.runner }}-ubuntu-2404
     timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
         sample: [1, 2]
-        include:
+        v:
           - { scope: dbw, mode: seq, runner: 4vcpu }
           - { scope: dbw, mode: seq, runner: 8vcpu }
           - { scope: dbw, mode: seq, runner: 16vcpu }
@@ -40,10 +40,10 @@ jobs:
           install-bun: "false"
       - name: Install ripgrep
         uses: ./.github/actions/setup-ripgrep
-      - name: Run database-worker ratchet (${{ matrix.mode }})
+      - name: Run database-worker ratchet (${{ matrix.v.mode }})
         env:
-          MODE: ${{ matrix.mode }}
-          SCOPE: ${{ matrix.scope }}
+          MODE: ${{ matrix.v.mode }}
+          SCOPE: ${{ matrix.v.scope }}
         run: |
           set -euo pipefail
           base=refs/remotes/origin/ci-ratchet-base
