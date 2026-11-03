@@ -5283,7 +5283,7 @@ printf '%s\n' "\${CURL_SUCCESS_IP:-203.0.113.7}"
             stripe,
           }),
         ),
-      ).toEqual(coreCommands(1, 2, 3, 4, 5));
+      ).toEqual(coreCommands(1, 3, 5, 2, 4));
       assertLint({ lane: "check", nodeRunnerBackend: "runson", releaseGate: true, runAttempt }, [
         scriptsCommand,
       ]);
