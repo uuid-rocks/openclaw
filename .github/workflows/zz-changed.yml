@@ -16,29 +16,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {"id": "single-2c-r1", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "0", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\", \"src/config/io.load-async.test.ts\", \"src/plugins/loader.runtime-registry.test.ts\", \"test/scripts/type-suppression-inventory.test.ts\"]"}
-          - {"id": "single-2c-r2", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "0", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\", \"src/config/io.load-async.test.ts\", \"src/plugins/loader.runtime-registry.test.ts\", \"test/scripts/type-suppression-inventory.test.ts\"]"}
-          - {"id": "single-2c-r3", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "0", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\", \"src/config/io.load-async.test.ts\", \"src/plugins/loader.runtime-registry.test.ts\", \"test/scripts/type-suppression-inventory.test.ts\"]"}
-          - {"id": "single-4c-r1", "runner": "blacksmith-4vcpu-ubuntu-2404", "split": "0", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\", \"src/config/io.load-async.test.ts\", \"src/plugins/loader.runtime-registry.test.ts\", \"test/scripts/type-suppression-inventory.test.ts\"]"}
-          - {"id": "single-4c-r2", "runner": "blacksmith-4vcpu-ubuntu-2404", "split": "0", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\", \"src/config/io.load-async.test.ts\", \"src/plugins/loader.runtime-registry.test.ts\", \"test/scripts/type-suppression-inventory.test.ts\"]"}
-          - {"id": "single-4c-r3", "runner": "blacksmith-4vcpu-ubuntu-2404", "split": "0", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\", \"src/config/io.load-async.test.ts\", \"src/plugins/loader.runtime-registry.test.ts\", \"test/scripts/type-suppression-inventory.test.ts\"]"}
-          - {"id": "single-8c-r1", "runner": "blacksmith-8vcpu-ubuntu-2404", "split": "0", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\", \"src/config/io.load-async.test.ts\", \"src/plugins/loader.runtime-registry.test.ts\", \"test/scripts/type-suppression-inventory.test.ts\"]"}
-          - {"id": "single-8c-r2", "runner": "blacksmith-8vcpu-ubuntu-2404", "split": "0", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\", \"src/config/io.load-async.test.ts\", \"src/plugins/loader.runtime-registry.test.ts\", \"test/scripts/type-suppression-inventory.test.ts\"]"}
-          - {"id": "single-8c-r3", "runner": "blacksmith-8vcpu-ubuntu-2404", "split": "0", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\", \"src/config/io.load-async.test.ts\", \"src/plugins/loader.runtime-registry.test.ts\", \"test/scripts/type-suppression-inventory.test.ts\"]"}
-          - {"id": "split-8c-r1", "runner": "blacksmith-8vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\", \"test/scripts/pr-worktree-provision.hook-policy.test.ts\", \"test/scripts/pr-worktree-provision.hook-faults.test.ts\", \"src/config/io.load-async.test.ts\", \"src/plugins/loader.runtime-registry.test.ts\", \"test/scripts/type-suppression-inventory.test.ts\"]"}
-          - {"id": "split-8c-r2", "runner": "blacksmith-8vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\", \"test/scripts/pr-worktree-provision.hook-policy.test.ts\", \"test/scripts/pr-worktree-provision.hook-faults.test.ts\", \"src/config/io.load-async.test.ts\", \"src/plugins/loader.runtime-registry.test.ts\", \"test/scripts/type-suppression-inventory.test.ts\"]"}
-          - {"id": "split-8c-r3", "runner": "blacksmith-8vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\", \"test/scripts/pr-worktree-provision.hook-policy.test.ts\", \"test/scripts/pr-worktree-provision.hook-faults.test.ts\", \"src/config/io.load-async.test.ts\", \"src/plugins/loader.runtime-registry.test.ts\", \"test/scripts/type-suppression-inventory.test.ts\"]"}
-          - {"id": "split-4c-r1", "runner": "blacksmith-4vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\", \"test/scripts/pr-worktree-provision.hook-policy.test.ts\", \"test/scripts/pr-worktree-provision.hook-faults.test.ts\", \"src/config/io.load-async.test.ts\", \"src/plugins/loader.runtime-registry.test.ts\", \"test/scripts/type-suppression-inventory.test.ts\"]"}
-          - {"id": "split-4c-r2", "runner": "blacksmith-4vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\", \"test/scripts/pr-worktree-provision.hook-policy.test.ts\", \"test/scripts/pr-worktree-provision.hook-faults.test.ts\", \"src/config/io.load-async.test.ts\", \"src/plugins/loader.runtime-registry.test.ts\", \"test/scripts/type-suppression-inventory.test.ts\"]"}
-          - {"id": "parta-2c-r1", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\"]"}
-          - {"id": "parta-2c-r2", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\"]"}
-          - {"id": "parta-2c-r3", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\"]"}
-          - {"id": "partb-2c-r1", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.hook-policy.test.ts\"]"}
-          - {"id": "partb-2c-r2", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.hook-policy.test.ts\"]"}
-          - {"id": "partb-2c-r3", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.hook-policy.test.ts\"]"}
-          - {"id": "partc-2c-r1", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.hook-faults.test.ts\"]"}
-          - {"id": "partc-2c-r2", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.hook-faults.test.ts\"]"}
-          - {"id": "partc-2c-r3", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.hook-faults.test.ts\"]"}
+          - {"id": "single-2c-r4", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "0", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\", \"src/config/io.load-async.test.ts\", \"src/plugins/loader.runtime-registry.test.ts\", \"test/scripts/type-suppression-inventory.test.ts\"]"}
+          - {"id": "single-2c-r5", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "0", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\", \"src/config/io.load-async.test.ts\", \"src/plugins/loader.runtime-registry.test.ts\", \"test/scripts/type-suppression-inventory.test.ts\"]"}
+          - {"id": "single-2c-r6", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "0", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\", \"src/config/io.load-async.test.ts\", \"src/plugins/loader.runtime-registry.test.ts\", \"test/scripts/type-suppression-inventory.test.ts\"]"}
+          - {"id": "split-8c-r4", "runner": "blacksmith-8vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\", \"test/scripts/pr-worktree-provision.hook-policy.test.ts\", \"test/scripts/pr-worktree-provision.hook-faults.test.ts\", \"src/config/io.load-async.test.ts\", \"src/plugins/loader.runtime-registry.test.ts\", \"test/scripts/type-suppression-inventory.test.ts\"]"}
+          - {"id": "split-8c-r5", "runner": "blacksmith-8vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\", \"test/scripts/pr-worktree-provision.hook-policy.test.ts\", \"test/scripts/pr-worktree-provision.hook-faults.test.ts\", \"src/config/io.load-async.test.ts\", \"src/plugins/loader.runtime-registry.test.ts\", \"test/scripts/type-suppression-inventory.test.ts\"]"}
+          - {"id": "split-8c-r6", "runner": "blacksmith-8vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\", \"test/scripts/pr-worktree-provision.hook-policy.test.ts\", \"test/scripts/pr-worktree-provision.hook-faults.test.ts\", \"src/config/io.load-async.test.ts\", \"src/plugins/loader.runtime-registry.test.ts\", \"test/scripts/type-suppression-inventory.test.ts\"]"}
+          - {"id": "parta-2c-r4", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\"]"}
+          - {"id": "parta-2c-r5", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\"]"}
+          - {"id": "parta-2c-r6", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\"]"}
+          - {"id": "parta-2c-r7", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.test.ts\"]"}
+          - {"id": "partb-2c-r4", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.hook-policy.test.ts\"]"}
+          - {"id": "partb-2c-r5", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.hook-policy.test.ts\"]"}
+          - {"id": "partb-2c-r6", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.hook-policy.test.ts\"]"}
+          - {"id": "partb-2c-r7", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.hook-policy.test.ts\"]"}
+          - {"id": "partc-2c-r4", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.hook-faults.test.ts\"]"}
+          - {"id": "partc-2c-r5", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.hook-faults.test.ts\"]"}
+          - {"id": "partc-2c-r6", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.hook-faults.test.ts\"]"}
+          - {"id": "partc-2c-r7", "runner": "blacksmith-2vcpu-ubuntu-2404", "split": "1", "targets": "[\"test/scripts/pr-worktree-provision.hook-faults.test.ts\"]"}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -96,38 +91,3 @@ jobs:
         if: always()
         run: cat /sys/fs/cgroup/memory.peak 2>/dev/null || true
 
-  build:
-    name: ${{ matrix.id }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - {"id": "build-2c-r1", "runner": "blacksmith-2vcpu-ubuntu-2404"}
-          - {"id": "build-2c-r2", "runner": "blacksmith-2vcpu-ubuntu-2404"}
-          - {"id": "build-4c-r1", "runner": "blacksmith-4vcpu-ubuntu-2404"}
-          - {"id": "build-4c-r2", "runner": "blacksmith-4vcpu-ubuntu-2404"}
-          - {"id": "build-8c-r1", "runner": "blacksmith-8vcpu-ubuntu-2404"}
-          - {"id": "build-8c-r2", "runner": "blacksmith-8vcpu-ubuntu-2404"}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Setup Node environment
-        uses: ./.github/actions/setup-node-env
-        with:
-          semantic-checks: "true"
-          cache-mode: restore
-          node-version: "24.22.1"
-          install-bun: "false"
-          dependency-cache: "true"
-          vitest-fs-cache: "true"
-          vitest-worker-cache: "true"
-          node-compile-cache: "true"
-      - name: Build Node test runtime
-        env:
-          NODE_OPTIONS: --max-old-space-size=8192
-          OPENCLAW_BUILD_PRIVATE_QA: "1"
-          VITEST: "1"
-        run: pnpm build qaRuntime
