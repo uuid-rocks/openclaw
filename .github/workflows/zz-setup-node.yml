@@ -1,0 +1,87 @@
+name: zz setup node probe
+
+on:
+  push:
+    branches: ["exp/setup/node*"]
+
+permissions:
+  contents: read
+
+jobs:
+  node:
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: [1, 2]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node environment
+        id: setup
+        uses: ./.github/actions/setup-node-env
+        with:
+          cache-mode: restore
+          dependency-cache: "true"
+          install-bun: "false"
+          vitest-fs-cache: "true"
+          node-compile-cache: "true"
+
+      - name: Inventory
+        run: |
+          set -uo pipefail
+          echo "dependency-cache-hit=${{ steps.setup.outputs.dependency-cache-hit }}"
+          df -h "$GITHUB_WORKSPACE" /tmp
+          paths=(node_modules ui/node_modules .cache/openclaw-pnpm-store)
+          du -sh "${paths[@]}"
+          du -sh .cache/openclaw-pnpm-store/* .cache/openclaw-pnpm-store/*/* 2>/dev/null | sort -h | tail -15
+          echo "files node_modules: $(find node_modules -type f | wc -l)"
+          echo "files store: $(find .cache/openclaw-pnpm-store -type f | wc -l)"
+          echo "store bytes only-linked-once (not shared with node_modules):"
+          find .cache/openclaw-pnpm-store -type f -links 1 -printf '%s\n' | awk '{s+=$1} END {printf "%.1f MiB in %d files\n", s/1048576, NR}'
+          echo "store files shared (links>1):"
+          find .cache/openclaw-pnpm-store -type f -links +1 -printf '%s\n' | awk '{s+=$1} END {printf "%.1f MiB in %d files\n", s/1048576, NR}'
+          echo "largest packages in node_modules/.pnpm:"
+          du -s node_modules/.pnpm/* 2>/dev/null | sort -n | tail -25 | awk '{printf "%8.1f MiB %s\n", $1/1024, $2}'
+          ls node_modules/.pnpm | wc -l
+
+      - name: Archive and extraction timing
+        run: |
+          set -euo pipefail
+          paths=(node_modules ui/node_modules packages/*/node_modules extensions/*/node_modules examples/*/node_modules .cache/openclaw-pnpm-store)
+          existing=()
+          for p in "${paths[@]}"; do [ -e "$p" ] && existing+=("$p"); done
+          t0=$(date +%s.%N)
+          tar -cf - -P "${existing[@]}" | zstd -T0 -3 --long=30 -q -o /tmp/deps.tzst
+          t1=$(date +%s.%N)
+          ls -la /tmp/deps.tzst
+          echo "create: $(echo "$t1-$t0" | bc)s"
+          mkdir -p /tmp/x1 /tmp/x2
+          sync; echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null || true
+          t0=$(date +%s.%N)
+          tar -xf /tmp/deps.tzst -P -C /tmp/x1 --use-compress-program "unzstd --long=30"
+          t1=$(date +%s.%N)
+          echo "extract tar+unzstd (actions/cache style): $(echo "$t1-$t0" | bc)s"
+          t0=$(date +%s.%N)
+          zstd -dc --long=30 /tmp/deps.tzst > /dev/null
+          t1=$(date +%s.%N)
+          echo "decompress only to /dev/null: $(echo "$t1-$t0" | bc)s"
+          t0=$(date +%s.%N)
+          zstd -dc --long=30 /tmp/deps.tzst | tar -xf - -C /tmp/x2 --exclude='.cache/openclaw-pnpm-store/cache'
+          t1=$(date +%s.%N)
+          echo "extract excluding pnpm metadata cache: $(echo "$t1-$t0" | bc)s"
+          rm -rf /tmp/x1 /tmp/x2
+
+      - name: Offline install without store
+        env:
+          CI: "true"
+        run: |
+          set -uo pipefail
+          mv .cache/openclaw-pnpm-store .cache/store-aside
+          mkdir -p .cache/openclaw-pnpm-store
+          cp -a .cache/store-aside/toolchain .cache/openclaw-pnpm-store/ 2>/dev/null || true
+          t0=$(date +%s.%N)
+          pnpm install --offline --frozen-lockfile --config.ignore-scripts=false --config.engine-strict=false --config.enable-pre-post-scripts=true --config.side-effects-cache=true --config.package-import-method=hardlink 2>&1 | tail -15
+          echo "rc=${PIPESTATUS[0]} install without store: $(echo "$(date +%s.%N)-$t0" | bc)s"
