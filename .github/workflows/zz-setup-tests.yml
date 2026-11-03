@@ -31,5 +31,5 @@ jobs:
         run: |
           files=$(ls test/scripts/ci-git-owner*.test.ts test/scripts/ci-workflow-*.test.ts test/scripts/ci-warm-vitest-caches.test.ts | tr '\n' ' ')
           pnpm test $files > /tmp/test.log 2>&1 && echo rc=0 || echo "rc=$?"
-          grep -E "Test Files|Tests  |FAIL|✗|×" /tmp/test.log | sed 's/\x1b\[[0-9;]*m//g' | sort | uniq -c | sort -rn | head -80
-          sed 's/\x1b\[[0-9;]*m//g' /tmp/test.log | grep -E -B2 -A25 'FAIL ' | head -400
+          sed 's/\x1b\[[0-9;]*m//g' /tmp/test.log | grep -E "Test Files|Tests  " | sort -u
+          sed 's/\x1b\[[0-9;]*m//g' /tmp/test.log | grep -E "^ *(FAIL|×) " | sed -E 's/ [0-9]+ms$//; s/^ *× / FAIL /' | sort -u | sed 's/^/FAILED-TEST /'
