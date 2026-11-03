@@ -89,6 +89,7 @@ import {
 
 // The manifest protocol also reads this policy from historical target planners.
 export { hasQaSmokeAffectingChange } from "./ci-qa-smoke-scope.mts";
+export { warmImportGraphEdges } from "../test-projects.test-support.mts";
 export { isCiDocumentationPath, resolveReleaseFastLaneScope } from "../ci-changed-scope.mjs";
 
 type ChangedNodeTestShard = NodeTestShard & {

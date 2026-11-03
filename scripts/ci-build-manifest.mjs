@@ -441,7 +441,7 @@ if (
   !compatibilityTarget &&
   changedPaths !== null
 ) {
-  (await import(fromTarget("./scripts/test-projects.test-support.mts"))).warmImportGraphEdges?.();
+  changedNodeTestPlan.warmImportGraphEdges?.();
 }
 // The UI owner graph also covers protocol and Gateway-served inputs
 // outside ui/. Ordinary UI test leaves retain their cheaper unit owner.
