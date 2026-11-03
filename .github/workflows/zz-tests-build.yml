@@ -1,0 +1,65 @@
+name: zz-tests-build
+on:
+  push:
+    branches: ["exp/tests/build-**"]
+permissions:
+  contents: read
+jobs:
+  seed:
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup release build runtime and cache
+        id: env
+        uses: ./.github/actions/setup-node-env
+        with:
+          node-version: "24.22.1"
+          install-bun: "false"
+          cache-mode: read-write
+          build-all-cache-scope: full
+      - name: Clear native SDK boundary output before build
+        run: rm -rf packages/plugin-sdk/dist
+      - name: Warm build cache
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+        run: time -p pnpm build
+      - name: Save build-all cache
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .artifacts/build-all-cache
+          key: ${{ steps.env.outputs.build-all-cache-key }}
+  qa-runtime:
+    needs: seed
+    name: ${{ matrix.id }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { id: qa-2v-noscope, runner: blacksmith-2vcpu-ubuntu-2404, scope: "" }
+          - { id: qa-2v-full, runner: blacksmith-2vcpu-ubuntu-2404, scope: full }
+          - { id: qa-8v-noscope, runner: blacksmith-8vcpu-ubuntu-2404, scope: "" }
+          - { id: qa-8v-full, runner: blacksmith-8vcpu-ubuntu-2404, scope: full }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Node environment
+        uses: ./.github/actions/setup-node-env
+        with:
+          semantic-checks: "true"
+          cache-mode: restore
+          install-bun: "false"
+          vitest-fs-cache: "true"
+          node-compile-cache: "true"
+          build-all-cache-scope: ${{ matrix.scope }}
+      - name: Build Node test runtime
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+          OPENCLAW_BUILD_PRIVATE_QA: "0"
+          VITEST: "1"
+        run: time -p pnpm build qaRuntime
