@@ -17,42 +17,36 @@ jobs:
       matrix:
         rep: [1, 2]
         v:
-          - lint-4-serial
+          - lint-4-gotune
           - lint-8-multi
-          - lint-16-serial
-          - lint-16-multi
-          - lint-16-multi-c9
-          - lint-16-unsplit
-          - lint-32-multi-c9
-          - types-4-stripe3
+          - lint-8-unsplit
+          - lint-32-unsplit
           - types-8-all-c4
-          - types-16-stripe3
-          - types-16-all-c4
-          - types-16-all-c8
-          - types-32-all-c16
-          - types-16-incr
+          - types-8-all-c2
+          - tc-4-a20
+          - tc-4-a40
+          - tc-16-a20
+          - tc-16-err
+          - tc-16-errcold
         include:
-          - { v: lint-4-serial, runner: blacksmith-4vcpu-ubuntu-2404 }
+          - { v: lint-4-gotune, runner: blacksmith-4vcpu-ubuntu-2404 }
           - { v: lint-8-multi, runner: blacksmith-8vcpu-ubuntu-2404 }
-          - { v: lint-16-serial, runner: blacksmith-16vcpu-ubuntu-2404 }
-          - { v: lint-16-multi, runner: blacksmith-16vcpu-ubuntu-2404 }
-          - { v: lint-16-multi-c9, runner: blacksmith-16vcpu-ubuntu-2404 }
-          - { v: lint-16-unsplit, runner: blacksmith-16vcpu-ubuntu-2404 }
-          - { v: lint-32-multi-c9, runner: blacksmith-32vcpu-ubuntu-2404 }
-          - { v: types-4-stripe3, runner: blacksmith-4vcpu-ubuntu-2404 }
+          - { v: lint-8-unsplit, runner: blacksmith-8vcpu-ubuntu-2404 }
+          - { v: lint-32-unsplit, runner: blacksmith-32vcpu-ubuntu-2404 }
           - { v: types-8-all-c4, runner: blacksmith-8vcpu-ubuntu-2404 }
-          - { v: types-16-stripe3, runner: blacksmith-16vcpu-ubuntu-2404 }
-          - { v: types-16-all-c4, runner: blacksmith-16vcpu-ubuntu-2404 }
-          - { v: types-16-all-c8, runner: blacksmith-16vcpu-ubuntu-2404 }
-          - { v: types-32-all-c16, runner: blacksmith-32vcpu-ubuntu-2404 }
-          - { v: types-16-incr, runner: blacksmith-16vcpu-ubuntu-2404 }
+          - { v: types-8-all-c2, runner: blacksmith-8vcpu-ubuntu-2404 }
+          - { v: tc-4-a20, runner: blacksmith-4vcpu-ubuntu-2404 }
+          - { v: tc-4-a40, runner: blacksmith-4vcpu-ubuntu-2404 }
+          - { v: tc-16-a20, runner: blacksmith-16vcpu-ubuntu-2404 }
+          - { v: tc-16-err, runner: blacksmith-16vcpu-ubuntu-2404 }
+          - { v: tc-16-errcold, runner: blacksmith-16vcpu-ubuntu-2404 }
     env:
       OPENCLAW_LOCAL_CHECK: "0"
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 1
+          fetch-depth: 50
           persist-credentials: false
       - name: Setup Node environment
         uses: ./.github/actions/setup-node-env
@@ -71,12 +65,54 @@ jobs:
           peak=0
           ( while true; do awk '/MemTotal/{t=$2}/MemAvailable/{a=$2}END{print (t-a)/1048576}' /proc/meminfo >> /tmp/mem.txt; sleep 2; done ) &
           sampler=$!
-          t() { local s=$(date +%s) rc=0; echo "::group::$*"; TIMEFORMAT="[time] %R s wall, %U user, %S sys"; time "$@" || rc=$?; echo "::endgroup::"; echo "[step] $(( $(date +%s) - s ))s rc=$rc :: $*"; }
+          t() { local s=$(date +%s) rc=0; echo "::group::$*"; TIMEFORMAT="[time] %R s wall, %U user, %S sys"; time "$@" || rc=$?; echo "::endgroup::"; echo "[step] $(( $(date +%s) - s ))s rc=$rc :: $*" >&2; }
           lint() { node --import tsx scripts/run-oxlint-shards.mts "$@"; }
           types() { node scripts/run-tsgo-core-test-shards.mjs "$@"; }
           all_stripes=(--core-stripe=1/5 --core-stripe=2/5 --core-stripe=3/5 --core-stripe=4/5 --core-stripe=5/5)
+          node --import tsx --input-type=module -e '
+            import os from "node:os";
+            import { applyLocalOxlintPolicy, applyLocalTsgoPolicy } from "./scripts/lib/local-check-runtime.mts";
+            import { readProcessMemoryCapacity } from "./scripts/lib/process-memory.mts";
+            const m = readProcessMemoryCapacity({});
+            const r = { logicalCpuCount: os.availableParallelism(), totalMemoryBytes: os.totalmem(), memoryCapacityBytes: m.capacityBytes, memoryLimitBytes: m.usageKnown && m.availableBytes !== null ? m.limitBytes : null, platform: process.platform };
+            console.log("[policy] resources", JSON.stringify(r));
+            const env = { ...process.env, CI: "true", GITHUB_ACTIONS: "true", OPENCLAW_LOCAL_CHECK: "0", OPENCLAW_OXLINT_BATCH_CONCURRENCY: "1" };
+            const a = ["--tsconfig", "config/tsconfig/oxlint.core.json", "src/gateway", "--threads=1"];
+            const o = applyLocalOxlintPolicy(a, { ...env, OPENCLAW_OXLINT_BOUNDED_SHARD_ARGS: JSON.stringify(a) }, r);
+            console.log("[policy] oxlint", o.args.join(" "), o.env.GOMAXPROCS, o.env.GOGC, o.env.GOMEMLIMIT);
+            const t = applyLocalTsgoPolicy(["-p", "x.json"], env, r);
+            console.log("[policy] tsgo", t.args.join(" "), t.env.GOMAXPROCS);
+          ' || true
+          head_sha=$(git rev-parse HEAD)
+          tc() { # $1=commit offset, $2=concurrency
+            local base; base=$(git rev-parse "HEAD~$1")
+            git checkout -q -f "$base"
+            t types --stripe 1-5/5 --concurrency "$2"
+            t types --root-stripe 1/1
+            git checkout -q -f "$head_sha"
+            t types --stripe 1-5/5 --concurrency "$2"
+            t types --root-stripe 1/1
+          }
+          inject() { sed -i 's/export function shortenHomePath(input: string): string/export function shortenHomePath(input: string, _required: number): string/' src/utils.ts; git diff --stat; }
           start=$(date +%s)
           case "$V" in
+            lint-4-gotune)
+              for s in 1 2 3 4 5; do GOMAXPROCS=4 GOGC=100 GOMEMLIMIT=10GiB t lint --only=core --split-core --core-stripe="$s/5" --threads=1; done ;;
+            tc-4-a20) tc 21 2 ;;
+            tc-4-a40) tc 41 2 ;;
+            tc-16-a20) tc 21 4 ;;
+            tc-16-err)
+              t types --stripe 1-5/5 --concurrency 4
+              inject
+              t types --stripe 1-5/5 --concurrency 4 2>&1 | grep -E "error TS|failed" | sort | tee /tmp/err-warm.txt
+              echo "[errors] warm $(grep -c 'error TS' /tmp/err-warm.txt)" ;;
+            tc-16-errcold)
+              inject
+              t types --stripe 1-5/5 --concurrency 4 2>&1 | grep -E "error TS|failed" | sort | tee /tmp/err-cold.txt
+              echo "[errors] cold $(grep -c 'error TS' /tmp/err-cold.txt)" ;;
+            types-*-all-c2)
+              t types --stripe 1-5/5 --concurrency 2
+              t types --root-stripe 1/1 ;;
             lint-*-serial)
               for s in 1 2 3 4 5; do t lint --only=core --split-core --core-stripe="$s/5" --threads=1; done ;;
             lint-*-multi)

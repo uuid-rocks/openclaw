@@ -367,7 +367,7 @@ describe("CI changed lint", () => {
             expect(parsed.files).toEqual(selection.files);
             const selected = createOxlintFileScope(selection.files).selectShards(
               selectExtensionOxlintStripe(
-                selectCoreOxlintStripe(filterOxlintShards(shards, parsed.only), parsed.coreStripe),
+                selectCoreOxlintStripe(filterOxlintShards(shards, parsed.only), parsed.coreStripes[0]),
                 parsed.extensionStripe,
               ),
             );
