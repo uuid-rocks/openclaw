@@ -15,17 +15,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rep: [1, 2, 3]
+        rep: [1, 2]
         v:
-          - types-4-stripe3
-          - types-4-stripe3-c4
-          - types-4-2stripes-c4
-          - types-4-all-c4
+          - lint-4-s45-t1
+          - lint-4-s45-t2
+          - lint-4-s45-t4
         include:
-          - { v: types-4-stripe3, runner: blacksmith-4vcpu-ubuntu-2404 }
-          - { v: types-4-stripe3-c4, runner: blacksmith-4vcpu-ubuntu-2404 }
-          - { v: types-4-2stripes-c4, runner: blacksmith-4vcpu-ubuntu-2404 }
-          - { v: types-4-all-c4, runner: blacksmith-4vcpu-ubuntu-2404 }
+          - { v: lint-4-s45-t1, runner: blacksmith-4vcpu-ubuntu-2404 }
+          - { v: lint-4-s45-t2, runner: blacksmith-4vcpu-ubuntu-2404 }
+          - { v: lint-4-s45-t4, runner: blacksmith-4vcpu-ubuntu-2404 }
     env:
       OPENCLAW_LOCAL_CHECK: "0"
     steps:
@@ -83,6 +81,9 @@ jobs:
           start=$(date +%s)
           files='["src/gateway/active-sessions-shutdown-drain.ts","src/gateway/active-sessions-shutdown-tracker.ts","src/agents/accepted-session-spawn.ts","src/infra/abort-signal.ts","src/cli/account-selector-boundary.test.ts","ui/src/app/app-host.tsx","src/config/agent-dirs.fs-identity.test.ts"]'
           case "$V" in
+            lint-4-s45-t*)
+              th="${V##*-t}"
+              for s in 4 5; do t lint --only=core --split-core --core-stripe="$s/5" --threads="$th"; done ;;
             chg-*-serial)
               for s in 1 2 3 4 5; do t lint --only=core --split-core --core-stripe="$s/5" --files-json "$files" --threads=1; done ;;
             chg-*-multi)
