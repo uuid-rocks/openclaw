@@ -132,6 +132,13 @@ availability, Blacksmith control-plane health, and downstream queue drains.
   only with measured end-to-end proof for a different transport, including its
   producer cost and fast-fetch regressions.
 
+- **Ratchet and checkout alternatives (2026-11-03):** Running the SQLite worker
+  ratchet's head and base analyses in parallel swapped on 15-GiB hosts (307s vs
+  143s sequential); persisting its base inventory would hit few PR bases because
+  main moves every ~2 minutes. A blobless fetch with full checkout took 64-80s
+  versus ~45s, and `useblacksmith/checkout` needed an 11-minute first mirror
+  build. Caching `.tsbuildinfo` from main gave no gain after 20-40 main commits.
+
 ## First Checks
 
 Before changing CI, collect current pressure:
@@ -316,7 +323,7 @@ These are intentionally guarded by the `ci-workflow-guards`,
   jobs or registrations and keeps the deadline and complete stripe inventory. The gate has no checkout or dependency setup; retries, ordinary
   manual dispatches, noncanonical contexts, and the GitHub override stay hosted.
   Core lint additionally retains hosted routing for frozen targets. Normal hybrid
-  main/same-repository PRs add two lint assignments; fork PRs can add six because
+  main/same-repository PRs add four lint assignments; fork PRs can add six because
   their logical GitHub check profile emits five lint rows. These fit the fresh
   71-row union and reserved 84-row non-Node allowance described above.
   Automatic canonical RunsOn and fork hybrid first-attempt `preflight` uses
@@ -337,8 +344,9 @@ These are intentionally guarded by the `ci-workflow-guards`,
   Selected baseline ratchets and Node rows start independently after preflight.
   Keep the standalone ratchet owner and exact merge-parent/base checks; the final
   gate still requires every selected ratchet to pass. Same-repository
-  hybrid first attempts use the existing 4-class for the ratchet job, with its
-  measured 91-second bound adding at most 6.07 class-vCPU-minutes and no jobs.
+  hybrid first attempts use the 16-class for the ratchet job: the SQLite worker
+  ratchet peaks near 12 GB and swapped on the 4-class (2 CPUs, 7.66 GiB), with a
+  631s median step versus 117-143s on the 16-class shape.
   Preserve the existing hosted fallbacks and deadline.
   The existing `check-plan` prerequisite uses the 16-class for shared compiler
   snapshot memory on canonical automatic first attempts with an unset,
@@ -748,22 +756,25 @@ These are intentionally guarded by the `ci-workflow-guards`,
 - Full hybrid check plans may share central formatting and scripts lint with
   existing core lint stripe 1 when its full command inventory contains only those
   commands. Retain both original core stripes, the exact central selection and
-  changed paths, sequential execution, one lint thread and the 15-minute budget.
+  changed paths, sequential execution, two lint threads and the 15-minute budget.
+  Hybrid rows split core stripes {1,3}, {2}, {4} and {5} by measured cost; the
+  former {1,2}/{3,4,5} rows put 482s of 653s stripe time on the critical row.
   UI, root-test and wrapper guards keep their separate central row. Require
   another remaining check row for the existing gate; targeted and other runner
   profiles retain their layout. Run shared central lint after a core failure so
   its diagnostics and failure remain visible. This removes one registration and
   setup, without enlarging runner capacity or relaxing a check.
-- Current GitHub/hybrid test types use five canonical core stripe jobs plus
-  the central extensions/scripts/root tail. Eligible core-change PRs keep the
-  same rows: each validates the complete graph boundary and intersects selected
-  consumers with its original stripe. Empty intersections stay empty; ambiguous
-  selection falls back to every canonical graph across those same stripes.
+- Current GitHub/hybrid test types use one core row (`--stripe 1-5/5
+  --concurrency 4`) plus the central extensions/scripts/root tail. On the
+  4-CPU/15-GiB 16-class, four single-threaded compilers peak near 9 GiB.
+  Eligible core-change PRs keep the same row: it validates the complete graph
+  boundary and checks only selected consumers. An empty selection drops the row;
+  ambiguous selection falls back to every canonical graph.
   Check existence only for compiler inputs: deleted Markdown and UI CSS paths
   do not widen accompanying code changes; deleted compiler inputs retain full coverage.
   Frozen targets retain two paired rows for stripes 1+2 and 3+4 sequentially,
-  with stripe 5 in the central row. Keep at most two compiler children per
-  stripe and one builder per child. A failing stripe stops its row; other
+  with stripe 5 in the central row and two compiler children per stripe.
+  Keep one builder per child. A failing stripe stops its row; other
   matrix rows keep running. Pure Blacksmith and targets without stripe support
   retain the central path. Keep row caps and deadlines unchanged; measure actual
   hosted completion rather than inferring wall-time savings from partitioning.

@@ -66,7 +66,7 @@ function planInput(overrides: Partial<CiCheckPlanInput>): CiCheckPlanInput {
     changedCoreTestPaths: null,
     runnerProfile: "hybrid",
     checkMatrix: checks("test-types"),
-    coreTypeMatrix: stripeMatrix(5),
+    coreTypeMatrix: stripeMatrix(1),
     lintCoreMatrix: stripeMatrix(0),
     lintExtensionMatrix: stripeMatrix(0),
     ...overrides,
@@ -251,42 +251,27 @@ it.each(["hybrid", "github"])(
 
 it("retains the complete full-check stripe inventory", async () => {
   const plan = await createPlan({ preserveFullChecks: true });
-  expect(plan.core_type_matrix).toEqual(stripeMatrix(5));
+  expect(plan.core_type_matrix).toEqual(stripeMatrix(1));
 });
 
 it.each([
   ["hybrid", [1, 2, 4, 5], ["test-root-tooling", "test-root-other"]],
   ["hybrid", [1, 2, 5], ["test-root-e2e"]],
-  ["hybrid", [1, 2, 4, 5], ["test-root"]],
+  ["hybrid", [1, 2, 3, 4, 5], ["test-root"]],
   ["blacksmith", [1, 2, 3, 4, 5], ["test-root"]],
 ] as const)(
-  "preserves selected root partition identity on %s (%j, %j)",
+  "packs selected core graphs into one hosted row and keeps roots central on %s (%j, %j)",
   async (runnerProfile, stripes, roots) => {
-    typeSelection.graphs = resolveCiTsgoGraphs([
-      ...stripes.map((stripe) => `core-test-${coreGraphNames[stripe - 1]}`),
-      "scripts",
-      ...roots,
-    ]);
+    const names = stripes.map((stripe) => `core-test-${coreGraphNames[stripe - 1]}`);
+    typeSelection.graphs = resolveCiTsgoGraphs([...names, "scripts", ...roots]);
     const plan = await createPlan({ runnerProfile });
-    const moved = runnerProfile === "hybrid" && stripes.length >= 4;
-    expect(plan.core_type_matrix.include.map((row) => row.stripe)).toEqual(
-      runnerProfile === "hybrid" ? stripes : [],
-    );
-    expect(plan.core_type_matrix.include.flatMap((row) => row.root_type_stripe ?? [])).toEqual(
-      !moved
-        ? []
-        : roots[0] === "test-root"
-          ? ["1/4", "2/4", "3/4", "4/4"]
-          : roots[0] === "test-root-e2e"
-            ? ["3/4"]
-            : ["1/4", "4/4"],
+    expect(plan.core_type_matrix.include).toEqual(
+      runnerProfile === "hybrid"
+        ? [{ stripe: 1, type_graph_names_json: JSON.stringify(names) }]
+        : [],
     );
     expect(JSON.parse(plan.check_matrix.include[0]!.type_graph_names_json!)).toEqual(
-      moved
-        ? ["scripts"]
-        : runnerProfile === "hybrid"
-          ? ["scripts", ...roots]
-          : [...roots, "scripts"],
+      runnerProfile === "hybrid" ? ["scripts", ...roots] : [...roots, "scripts"],
     );
   },
 );

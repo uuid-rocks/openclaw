@@ -430,6 +430,19 @@ let runUiTests =
     !docsOnly &&
     !nodeDataOnly &&
     !releaseFastLane);
+// One full edge scan replaces the per-layer scans the UI E2E owner queries
+// below would otherwise start; the changed Node plan reuses the same edges.
+if (
+  runtimePullRequest &&
+  !docsOnly &&
+  !nodeDataOnly &&
+  !releaseFastLane &&
+  (!frozenTarget || releaseGate) &&
+  !compatibilityTarget &&
+  changedPaths !== null
+) {
+  changedNodeTestPlan.warmImportGraphEdges?.();
+}
 // The UI owner graph also covers protocol and Gateway-served inputs
 // outside ui/. Ordinary UI test leaves retain their cheaper unit owner.
 const selectUiE2eFamily = (family) =>
@@ -924,7 +937,7 @@ const fullCoreLintStripes =
   ((!releaseGate && ["push", "pull_request"].includes(eventName)) ||
     nodeRunnerBackend === "runson" ||
     ciQualification)
-    ? [1, 2]
+    ? [1, 2, 3, 4]
     : [1, 2, 3, 4, 5];
 const coreLintRows = fullCoreLintStripes.map((stripe) => ({ stripe }));
 const compactExtensionLint =
@@ -937,7 +950,7 @@ const compactExtensionLint =
 const extensionLintRows = compactExtensionLint
   ? [1, 2, 3].map((stripe) => ({ stripe, stripe_count: 3 }))
   : [1, 2, 3, 4, 5, 6].map((stripe) => ({ stripe }));
-const coreTypeRows = (frozenTarget ? [1, 2] : [1, 2, 3, 4, 5]).map((stripe) => ({ stripe }));
+const coreTypeRows = (frozenTarget ? [1, 2] : [1]).map((stripe) => ({ stripe }));
 if (proposedCheckScope) {
   runBaselineRatchets &&= proposedCheckScope.baselineRatchets;
   for (let index = checksFastCoreTasks.length - 1; index >= 0; index--) {
@@ -1259,6 +1272,7 @@ const uiRealGatewayShards =
 const projectNodeTestGroup = ({
   configs,
   env,
+  exclusive,
   fallbackMaxWorkers,
   includePatterns,
   minTotalMemoryBytes,
@@ -1267,6 +1281,7 @@ const projectNodeTestGroup = ({
 }) => ({
   configs,
   env,
+  exclusive,
   fallbackMaxWorkers,
   includePatterns,
   minTotalMemoryBytes,

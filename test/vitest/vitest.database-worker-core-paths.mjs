@@ -741,6 +741,8 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/worktrees/template-cache.test.ts",
   "src/agents/worktrees/template-registry.test.ts",
   "test/scripts/pr-worktree-provision.test.ts",
+  "test/scripts/pr-worktree-provision.hook-policy.test.ts",
+  "test/scripts/pr-worktree-provision.hook-faults.test.ts",
   "test/scripts/pr-worktree-state.test.ts",
   "src/agents/cli-runner/history-boundary.test.ts",
   "src/agents/cli-runner/session-history.test.ts",

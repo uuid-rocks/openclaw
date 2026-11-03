@@ -267,15 +267,14 @@ for evidence, rerun, and coverage details. Standard SDK images and build
 dependencies are downloaded during setup; no Google account, companion APK, or
 paired-device image is provisioned.
 
-Eligible core-source and core-test PRs use targeted type checks when every selected compiler input exists in the checkout. Deleted Markdown files and UI stylesheets do not prevent narrowing for accompanying code changes. GitHub and hybrid profiles distribute the selected consumers across their existing core stripes; the Blacksmith profile checks them in the central row. Ambiguous ownership and deleted compiler inputs keep the full type-check coverage.
+Eligible core-source and core-test PRs use targeted type checks when every selected compiler input exists in the checkout. Deleted Markdown files and UI stylesheets do not prevent narrowing for accompanying code changes. GitHub and hybrid profiles check the selected consumers in their single core type row; the Blacksmith profile checks them in the central row. Ambiguous ownership and deleted compiler inputs keep the full type-check coverage.
 
 Scoped PR plans inspect the four root-test partitions separately and select every
 partition that consumes a changed input, including type-only imports. A change
 used only by tooling tests checks that partition; shared setup can select all
 four. Full checks retain the aggregate root alias. Missing or duplicate compiler
-inventories retain full coverage. Selected partitions keep their original stripe
-identities when four admitted core rows are available; smaller plans run only the
-selected partitions serially in the central row.
+inventories retain full coverage. The central row runs only the selected
+partitions, serially.
 
 Preflight passes the complete changed-path manifest between steps as a local JSON
 file, so large PRs do not lose test-planning inputs to Actions output or environment
@@ -289,7 +288,7 @@ runner startup, then reject expired requests before checkout and hydration. This
 queue allowance does not extend running-job or idle deadlines; see
 [Testbox spending limits](/ci/runners#testbox-spending-limits).
 
-Full GitHub and hybrid type checks run the five core stripes independently, retaining two compiler children per job. The last four rows then each run one root-test partition serially, leaving extension tests and scripts in the central row. Narrow plans reuse four already-selected rows when available; smaller selections retain central root checking. This adds no jobs or compiler overlap. Current hybrid full runs use three hosted extension-lint jobs; targeted layouts retain six stripe identities. Trusted hybrid first attempts retain both packed core-lint rows on the Blacksmith 16-class. Ordinary upstream hybrid push and scheduled runs, plus same-repository PRs, place `preflight`, the selected `pr-failure-report`, and `openclaw/ci-gate` on hosted `ubuntu-24.04`; fork first attempts and all dispatch, qualification, release, and other backend routes retain their existing overrides. The mandatory controls count toward the existing hosted-row budget. See [critical-path assignment evidence](/ci/routing-costs#hosted-assignment-on-the-critical-path). Frozen targets keep their earlier layout; see [static checks](/ci/runners#runner-backend-modes).
+Full GitHub and hybrid type checks run every core test graph in one row with four compiler children. The central row runs extension tests, scripts, and the four root-test partitions serially. Narrow plans put the selected core graphs in that row and the selected root partitions in the central row. Current hybrid full runs use three hosted extension-lint jobs; targeted layouts retain six stripe identities. Trusted hybrid first attempts retain both packed core-lint rows on the Blacksmith 16-class. Ordinary upstream hybrid push and scheduled runs, plus same-repository PRs, place `preflight`, the selected `pr-failure-report`, and `openclaw/ci-gate` on hosted `ubuntu-24.04`; fork first attempts and all dispatch, qualification, release, and other backend routes retain their existing overrides. The mandatory controls count toward the existing hosted-row budget. See [critical-path assignment evidence](/ci/routing-costs#hosted-assignment-on-the-critical-path). Frozen targets keep their earlier layout; see [static checks](/ci/runners#runner-backend-modes).
 
 Additional checks and narrow-PR guards and dependency scans start directly after preflight. Ordinary PRs selecting Madge or Kysely divide guards into `check-guards` and `check-guards-architecture`, with the same runner routing and no compiler-plan wait. The manifest retains every check once, and both selected rows must pass. Other events retain their existing rows. Guards retain the exact comparison base and shared check commands; compiler and lint rows wait for their selected graphs. Known full compiler selections skip discovery while retaining the core graph boundary in an existing required owner; see [pipeline ordering](/ci/pipeline#fail-fast-order).
 

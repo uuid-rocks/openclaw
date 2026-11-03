@@ -677,6 +677,40 @@ describe("CI changed Node test plan", () => {
   });
 
   it.each([
+    {
+      provisioning: [
+        "test/scripts/pr-worktree-provision.test.ts",
+        "test/scripts/pr-worktree-provision.hook-policy.test.ts",
+        "test/scripts/pr-worktree-provision.hook-faults.test.ts",
+      ],
+      runner: "blacksmith-32vcpu-ubuntu-2404",
+    },
+    {
+      provisioning: ["test/scripts/pr-worktree-provision.hook-policy.test.ts"],
+      runner: "blacksmith-8vcpu-ubuntu-2404",
+    },
+  ])(
+    "overlaps provisioning files only when two share a row ($runner)",
+    ({ provisioning, runner }) => {
+      const targets = [...provisioning, "src/infra/retry.test.ts"];
+      const shards = createChangedNodeTestShards(targets, {
+        selectedTestTargets: targets,
+        runnerBackend: "hybrid",
+      });
+      expect(selectedFiles(shards)).toEqual(expect.arrayContaining(targets));
+      const rows = (shards ?? []).filter((shard) =>
+        shard.targets?.some((target) => provisioning.includes(target)),
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ runner });
+      expect(rows[0]?.planConcurrency).toBeUndefined();
+      if (provisioning.length > 1) {
+        expect(rows[0]?.targets?.toSorted()).toEqual(provisioning.toSorted());
+      }
+    },
+  );
+
+  it.each([
     "src/agents/model-fallback.reply-entry.e2e.test.ts",
     "src/auto-reply/reply/agent-runner.runreplyagent.e2e.test.ts",
     "src/agents/bash-tools.process.e2e.test.ts",

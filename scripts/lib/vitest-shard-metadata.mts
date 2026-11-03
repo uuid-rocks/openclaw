@@ -315,11 +315,14 @@ const STRIPE_FILE_SECONDS_HINTS = new Map<string, number>([
   ["src/cli/update-cli.candidate-activation.test.ts", 149],
   ["src/cli/update-cli.git-service.test.ts", 116],
   ["src/cli/update-cli.target-schema.test.ts", 186],
-  ["test/scripts/pr-worktree-provision.test.ts", 206],
   ["src/gateway/managed-image-attachments.test.ts", 24],
   ["src/gateway/session-message-events.test.ts", 26],
   ["src/gateway/tool-resolution.test.ts", 43],
   ["test/scripts/test-projects-routing.test.ts", 21],
+  // Serial case-cost sums from PR run 41643729473, rounded up.
+  ["test/scripts/pr-worktree-provision.test.ts", 127],
+  ["test/scripts/pr-worktree-provision.hook-policy.test.ts", 122],
+  ["test/scripts/pr-worktree-provision.hook-faults.test.ts", 93],
   // Single-worker Node file spans after splitting the sidebar's serial case groups.
   ["ui/src/components/app-sidebar.catalog.test.ts", 4],
   ["ui/src/components/app-sidebar.interactions.test.ts", 6],
