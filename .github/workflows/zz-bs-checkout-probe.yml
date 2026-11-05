@@ -1,0 +1,39 @@
+# FORK-ONLY measurement harness: useblacksmith/checkout timing.
+name: zz-bs-checkout-probe
+on:
+  push:
+    branches: [bs-checkout-probe]
+permissions:
+  contents: read
+jobs:
+  first:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - name: Blacksmith checkout
+        uses: useblacksmith/checkout@2b9fe87d796feea153b455ec2f3125b471a7b0e7 # v1
+        with:
+          fetch-depth: 2
+      - run: git log --oneline -1; cat .git/objects/info/alternates || true; du -sh .git
+  warm:
+    needs: first
+    strategy:
+      matrix:
+        i: [1, 2, 3, 4, 5, 6]
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - name: Blacksmith checkout
+        uses: useblacksmith/checkout@2b9fe87d796feea153b455ec2f3125b471a7b0e7 # v1
+        with:
+          fetch-depth: 2
+      - run: git log --oneline -1; cat .git/objects/info/alternates || true; du -sh .git
+  baseline:
+    needs: first
+    strategy:
+      matrix:
+        i: [1, 2, 3]
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - name: GitHub checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
