@@ -1892,6 +1892,7 @@ jobs:
     steps:
       - &blacksmith_checkout_step
         name: Checkout from Blacksmith Git mirror
+        if: ${{ false }}
         # The owned checkout below keeps this workspace when HEAD is CHECKOUT_SHA
         # and otherwise replaces it with its own GitHub fetch.
         continue-on-error: true
