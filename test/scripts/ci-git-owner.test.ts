@@ -418,6 +418,54 @@ releasePolicyIt.for([
   },
 );
 
+linuxIt("keeps a mirror-backed workspace already at the candidate", ({ command }) => {
+  const root = command.createTempDir("ci-owner-reuse-");
+  const source = join(root, "source");
+  const workspace = join(root, "workspace");
+  fixtureGit(root, ["init", "--quiet", source]);
+  fixtureGit(source, ["commit", "--quiet", "--allow-empty", "-m", "base"]);
+  const baseSha = fixtureGit(source, ["rev-parse", "HEAD"]);
+  mkdirSync(join(source, ".github/actions/setup-node-env"), { recursive: true });
+  writeFileSync(join(source, ".github/actions/setup-node-env/action.yml"), "name: setup\n");
+  fixtureGit(source, ["add", "."]);
+  fixtureGit(source, ["commit", "--quiet", "-m", "candidate"]);
+  const candidate = fixtureGit(source, ["rev-parse", "HEAD"]);
+  fixtureGit(root, ["init", "--quiet", workspace]);
+  writeFileSync(
+    join(workspace, ".git/objects/info/alternates"),
+    `${join(source, ".git/objects")}\n`,
+  );
+  fixtureGit(workspace, ["remote", "add", "origin", "https://github.com/openclaw/openclaw"]);
+  fixtureGit(workspace, ["checkout", "--quiet", "--detach", candidate]);
+  writeFileSync(join(workspace, "kept"), "");
+
+  const result = spawnSync("python3", ["-I", "-S", gitOwnerPath], {
+    cwd: workspace,
+    encoding: "utf8",
+    env: {
+      ...ancestryGitEnv(),
+      // Any network fetch fails: reuse must resolve every ref locally.
+      GIT_ALLOW_PROTOCOL: "file",
+      GIT_CONFIG_GLOBAL: join(root, "gitconfig"),
+      RUNNER_OS: "Linux",
+      GITHUB_WORKSPACE: workspace,
+      GITHUB_REPOSITORY: "openclaw/openclaw",
+      CHECKOUT_REPO: "openclaw/openclaw",
+      CHECKOUT_SHA: candidate,
+      CHECKOUT_BASE_SHA: baseSha,
+      WORKFLOW_SHA: candidate,
+    },
+  });
+
+  expect(result.status, result.stdout + result.stderr).toBe(0);
+  expect(readFileSync(join(workspace, "kept"), "utf8")).toBe("");
+  expect(fixtureGit(workspace, ["rev-parse", "refs/remotes/origin/ci-target"])).toBe(candidate);
+  expect(fixtureGit(workspace, ["rev-parse", "refs/remotes/origin/ci-ratchet-base"])).toBe(baseSha);
+  expect(
+    readFileSync(join(workspace, ".ci-harness/.github/actions/setup-node-env/action.yml"), "utf8"),
+  ).toBe("name: setup\n");
+});
+
 // Ask Bash to decode the source independently of the generator and fixture codec.
 it("keeps exactly one byte-identical generated CI owner", () => {
   const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
