@@ -1701,9 +1701,9 @@ AFTER_CD
     expect(job["timeout-minutes"]).toBe(115);
     expect(job.permissions).toEqual({ contents: "read" });
     expect(job.strategy).toBeUndefined();
-    expect(job.steps[0]).toEqual(jobs["build-artifacts"].steps[0]);
-    expect(job.steps[1].uses).toBe("./.ci-harness/.github/actions/setup-node-env");
-    expect(job.steps[1].with).toMatchObject({
+    expect(job.steps.slice(0, 2)).toEqual(jobs["build-artifacts"].steps.slice(0, 2));
+    expect(job.steps[2].uses).toBe("./.ci-harness/.github/actions/setup-node-env");
+    expect(job.steps[2].with).toMatchObject({
       "build-all-cache-scope": "full",
       "cache-mode": "${{ needs.preflight.outputs.cache_mode }}",
     });
@@ -4295,8 +4295,12 @@ ${step.run}`,
     for (const [jobName, job] of Object.entries(workflow.jobs)) {
       for (const step of (job as { steps?: WorkflowStep[] }).steps ?? []) {
         if (step.uses?.startsWith("actions/cache/restore@")) {
+          // Seed objects are content-addressed fetch negotiation input, not build state.
+          const preflightSeed = jobName === "preflight" && step.name === "Restore Git object seed";
           expect(String(step.if), `${jobName}: ${step.name}`).toContain(
-            "preflight.outputs.cache_mode != 'off'",
+            preflightSeed
+              ? "github.event_name != 'workflow_dispatch'"
+              : "preflight.outputs.cache_mode != 'off'",
           );
         }
         if (step.uses?.startsWith("actions/cache/save@")) {
@@ -5257,24 +5261,23 @@ printf '%s\n' "\${CURL_SUCCESS_IP:-203.0.113.7}"
     const lintCommand = (flags: string, threads = 1) =>
       `node --import tsx scripts/run-oxlint-shards.mts ${flags}--threads=${threads}`;
     const coreCommands = (...stripes: number[]) =>
-      stripes.map((stripe) => lintCommand(`--only=core --split-core --core-stripe=${stripe}/5 `));
-    const extensionCommand = (stripe: number, count = 6) =>
-      lintCommand(`--only=extensions --extension-stripe=${stripe}/${count} `);
+      stripes.map((stripe) =>
+        lintCommand(`--only=core --split-core --core-stripe=${stripe}/5 `, 2),
+      );
+    const extensionCommand = (stripe: number, count = 6, threads = 1) =>
+      lintCommand(`--only=extensions --extension-stripe=${stripe}/${count} `, threads);
     const scriptsCommand = lintCommand("--only=scripts ");
     const assertLint = (options: Parameters<typeof runLintOwner>[0], expected: string[]) =>
       expect(runLintOwner(options)).toEqual(expected);
     // Manifest tests own row admission; these cases execute every full-layout stripe.
     for (const eventName of ["pull_request", "push"] as const) {
-      expect([1, 2].map((stripe) => runLintOwner({ eventName, lane: "core", stripe }))).toEqual(
-        [
-          [1, 2],
-          [3, 4, 5],
-        ].map((stripes) => coreCommands(...stripes)),
-      );
+      expect(
+        [1, 2, 3, 4].map((stripe) => runLintOwner({ eventName, lane: "core", stripe })),
+      ).toEqual([[1, 3], [2], [4], [5]].map((stripes) => coreCommands(...stripes)));
     }
     for (const runAttempt of [1, 2]) {
       expect(
-        [1, 2].flatMap((stripe) =>
+        [1, 2, 3, 4].flatMap((stripe) =>
           runLintOwner({
             lane: "core",
             nodeRunnerBackend: "runson",
@@ -5283,15 +5286,15 @@ printf '%s\n' "\${CURL_SUCCESS_IP:-203.0.113.7}"
             stripe,
           }),
         ),
-      ).toEqual(coreCommands(1, 2, 3, 4, 5));
+      ).toEqual(coreCommands(1, 3, 2, 4, 5));
       assertLint({ lane: "check", nodeRunnerBackend: "runson", releaseGate: true, runAttempt }, [
         scriptsCommand,
       ]);
     }
-    assertLint({ eventName: "pull_request", failStripe: 1, lane: "core" }, coreCommands(1, 2));
+    assertLint({ eventName: "pull_request", failStripe: 1, lane: "core" }, coreCommands(1, 3));
     assertLint(
-      { eventName: "pull_request", failStripe: 4, lane: "core", stripe: 2 },
-      coreCommands(3, 4, 5),
+      { eventName: "pull_request", failStripe: 4, lane: "core", stripe: 3 },
+      coreCommands(4),
     );
 
     assertLint({ lane: "check", profile: "github" }, [extensionCommand(6), scriptsCommand]);
@@ -5311,7 +5314,7 @@ printf '%s\n' "\${CURL_SUCCESS_IP:-203.0.113.7}"
     for (const stripeCount of [3, 6]) {
       for (let stripe = 1; stripe <= stripeCount; stripe++) {
         assertLint({ lane: "extensions", stripe, stripeCount }, [
-          extensionCommand(stripe, stripeCount),
+          extensionCommand(stripe, stripeCount, 2),
         ]);
       }
     }

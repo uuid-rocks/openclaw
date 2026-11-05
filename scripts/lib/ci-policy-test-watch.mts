@@ -75,6 +75,8 @@ const policyTestWatches: readonly PolicyTestWatch[] = [
   ...[
     "test/scripts/pr-wrapper-source-closure.test.ts",
     "test/scripts/pr-worktree-provision.test.ts",
+    "test/scripts/pr-worktree-provision.hook-policy.test.ts",
+    "test/scripts/pr-worktree-provision.hook-faults.test.ts",
     "test/scripts/eager-import-closure.test.ts",
     "test/scripts/update-restart-module-outcome.test.ts",
     "test/scripts/type-suppression-inventory.test.ts",
@@ -2065,6 +2067,8 @@ const policyTestWatches: readonly PolicyTestWatch[] = [
   },
   ...[
     "test/scripts/pr-worktree-provision.test.ts",
+    "test/scripts/pr-worktree-provision.hook-policy.test.ts",
+    "test/scripts/pr-worktree-provision.hook-faults.test.ts",
     "test/scripts/eager-import-closure.test.ts",
     "test/scripts/pr-wrapper-source-closure.test.ts",
     "test/scripts/ci-workflow-cost.test.ts",

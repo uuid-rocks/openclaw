@@ -1,5 +1,4 @@
 import {
-  chmodSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -8,48 +7,16 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { detectWorktreeFilesystemBackend } from "../../src/agents/worktrees/filesystem-backend.js";
 import { listTemplatesAsync } from "../../src/agents/worktrees/template-registry-async.js";
-import { closeStateDatabaseForTest } from "../../src/test-utils/database-cleanup.js";
-import { useAutoCleanupTempDirTracker } from "../helpers/temp-dir.js";
-import { createMainRefreshFixture } from "./pr-main-refresh.test-support.js";
-
-const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
-  afterEach(async () => {
-    await closeStateDatabaseForTest();
-    cleanup();
-  }),
-);
-const describePosix = process.platform === "win32" ? describe.skip : describe;
-
-function coldFixture(perWorktreeConfig = true) {
-  const f = createMainRefreshFixture(tempDirs.make("openclaw-pr-provision-"), {
-    perWorktreeConfig,
-    precreateWorktree: false,
-  });
-  f.env.OPENCLAW_STATE_DIR = join(f.root, "state");
-  f.env.OPENCLAW_CONFIG_PATH = join(f.root, "config.json");
-  writeFileSync(f.env.OPENCLAW_CONFIG_PATH, "{}\n");
-  return {
-    ...f,
-    run(...args: Parameters<typeof f.run>) {
-      const result = f.run(...args);
-      f.assertPrivateHandoffVerified();
-      return result;
-    },
-  };
-}
-
-function expectSeed(f: ReturnType<typeof coldFixture>, pr = 42) {
-  const worktree = join(f.canonical, ".worktrees", `pr-${pr}`);
-  expect(f.git(worktree, "symbolic-ref", "HEAD")).toBe(`refs/heads/temp/pr-${pr}`);
-  expect(f.git(worktree, "rev-parse", "HEAD")).toBe(f.main);
-  expect(f.git(f.canonical, "rev-parse", `refs/heads/temp/pr-${pr}`)).toBe(f.main);
-  return worktree;
-}
+import {
+  coldFixture,
+  describePosix,
+  expectSeed,
+} from "./pr-worktree-provision-cold.test-support.js";
 
 function nextPr(f: ReturnType<typeof coldFixture>, pr: number) {
   f.configure({
@@ -167,193 +134,6 @@ if (process.argv[1]?.endsWith("/worktree-provision.mts")) {
       }
       expect(f.git(f.worktree, "rev-parse", "FETCH_HEAD")).toBe(f.main);
       expect(f.git(f.canonical, "for-each-ref", "refs/openclaw/pr-operation-locks")).toBe("");
-    },
-  );
-
-  it.each([
-    "default",
-    "absolute",
-    "relative",
-    "command-scoped",
-    "parameter-scoped",
-    "branch",
-  ] as const)("executes the %s checkout hook once and preserves its tracked edit", (policy) => {
-    const f = coldFixture(false);
-    const hooks =
-      policy === "default" ? join(f.canonical, ".git", "hooks") : join(f.root, "configured-hooks");
-    const receipt = join(f.root, "configured-hook.txt");
-    if (policy !== "default") {
-      mkdirSync(hooks);
-    }
-    const hook = join(hooks, "post-checkout");
-    const edit =
-      policy === "default"
-        ? "hook-owned edit"
-        : policy === "branch"
-          ? "branch hook edit"
-          : "configured hook edit";
-    const record =
-      policy === "default"
-        ? 'printf \'%s\\t%s\\t%s\\t%s\\n\' "$PWD" "$1" "$2" "$3"'
-        : "printf '%s\\n' \"$PWD\"";
-    writeFileSync(
-      hook,
-      `#!/bin/sh
-${record} >> "${receipt}"
-printf '${edit}\\n' > src/subject.ts
-`,
-    );
-    chmodSync(hook, 0o755);
-    if (policy === "default") {
-      f.git(f.canonical, "config", "--unset", "core.hooksPath");
-    } else if (policy === "branch") {
-      const config = join(f.root, "branch.gitconfig");
-      writeFileSync(config, `[core]\n\thooksPath = ${JSON.stringify(hooks)}\n`);
-      f.git(f.canonical, "config", "includeIf.onbranch:temp/pr-*.path", config);
-      // Detached canonical HEAD cannot reveal the destination's branch-only policy.
-      expect(f.git(f.canonical, "config", "--get", "core.hooksPath")).toBe("/dev/null");
-    } else if (policy === "command-scoped") {
-      f.env.GIT_CONFIG_COUNT = "1";
-      f.env.GIT_CONFIG_KEY_0 = "core.hooksPath";
-      f.env.GIT_CONFIG_VALUE_0 = hooks;
-    } else if (policy === "parameter-scoped") {
-      f.env.GIT_CONFIG_PARAMETERS = `'core.hooksPath=${hooks}'`;
-    } else {
-      // Relative hooks resolve from the checkout in which the hook runs,
-      // not from the canonical repository where provisioning begins.
-      f.git(
-        f.canonical,
-        "config",
-        "core.hooksPath",
-        policy === "relative" ? relative(f.worktree, hooks) : hooks,
-      );
-    }
-    const result = f.run("review-init");
-    expect(result.status).not.toBe(0);
-    // Relative and branch-only policy activates after entering the new checkout.
-    expect(result.stderr).toContain(
-      policy === "relative" || policy === "branch"
-        ? "the journaled transition did not complete cleanly"
-        : "foreign state blocks a new transition",
-    );
-    expectSeed(f);
-    if (policy === "default") {
-      const calls = readFileSync(receipt, "utf8").trim().split("\n");
-      expect(calls).toHaveLength(1);
-      expect(calls[0]!.split("\t")).toEqual([f.worktree, "0".repeat(40), f.main, "1"]);
-    } else {
-      expect(readFileSync(receipt, "utf8")).toBe(`${f.worktree}\n`);
-    }
-    expect(readFileSync(join(f.worktree, "src", "subject.ts"), "utf8")).toBe(`${edit}\n`);
-    expect(existsSync(join(f.canonical, ".worktrees", ".templates"))).toBe(false);
-    expect(f.git(f.canonical, "status", "--porcelain")).toBe("");
-    // The failed hook run drained, so the supervisor released the lock; the checkout keeps the evidence.
-    expect(f.git(f.canonical, "for-each-ref", "refs/openclaw/pr-operation-locks")).toBe("");
-  });
-
-  it("preserves a caller fsmonitor hook without enabling it in managed Git", () => {
-    const f = coldFixture(false);
-    const monitor = join(f.root, "fsmonitor's hook");
-    const monitorCommand = `'${monitor.replace(/'/gu, `'\\''`)}'`;
-    const receipt = join(f.root, "fsmonitor.txt");
-    // Git treats a nonzero monitor exit as a request for an ordinary scan.
-    // This records invocation without faking a clean index or monitor token.
-    writeFileSync(monitor, `#!/bin/sh\nprintf '%s\\n' "$PWD" >> "${receipt}"\nexit 1\n`);
-    chmodSync(monitor, 0o755);
-    f.git(f.canonical, "config", "core.fsmonitor", monitorCommand);
-    const result = f.run("review-init");
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stderr).toContain("PR source checkout: Git checkout.");
-    expect(readFileSync(receipt, "utf8").trim().split("\n")).toContain(f.worktree);
-    expectSeed(f);
-    expect(f.git(f.worktree, "config", "--get", "core.fsmonitor")).toBe(monitorCommand);
-    expect(existsSync(join(f.canonical, ".worktrees", ".templates"))).toBe(false);
-  });
-
-  it("preserves the caller branch and initialized checkout after a nonzero hook exit", () => {
-    const f = coldFixture(false);
-    f.git(f.canonical, "config", "--unset", "core.hooksPath");
-    const hook = join(f.canonical, ".git", "hooks", "post-checkout");
-    writeFileSync(
-      hook,
-      "#!/bin/sh\nprintf 'retained hook evidence\\n' > hook-evidence.txt\nexit 31\n",
-    );
-    chmodSync(hook, 0o755);
-    const result = f.run("review-init");
-    expect(result.status).not.toBe(0);
-    expectSeed(f);
-    expect(readFileSync(join(f.worktree, "hook-evidence.txt"), "utf8")).toBe(
-      "retained hook evidence\n",
-    );
-    // The failed hook run drained, so the supervisor released the lock; the checkout keeps the evidence.
-    expect(f.git(f.canonical, "for-each-ref", "refs/openclaw/pr-operation-locks")).toBe("");
-  });
-
-  it("does not repair a caller seed moved by a checkout hook", () => {
-    const f = coldFixture(false);
-    f.git(f.canonical, "config", "--unset", "core.hooksPath");
-    const hook = join(f.canonical, ".git", "hooks", "post-checkout");
-    writeFileSync(hook, `#!/bin/sh\ngit update-ref refs/heads/temp/pr-42 ${f.head} ${f.main}\n`);
-    chmodSync(hook, 0o755);
-    const result = f.run("review-init");
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toMatch(/identity changed|seed branch moved/);
-    expect(f.git(f.canonical, "rev-parse", "refs/heads/temp/pr-42")).toBe(f.head);
-    expect(f.git(f.worktree, "symbolic-ref", "HEAD")).toBe("refs/heads/temp/pr-42");
-    expect(f.git(f.worktree, "write-tree")).toBe(
-      f.git(f.canonical, "rev-parse", `${f.main}^{tree}`),
-    );
-  });
-
-  it.each(["replaced", "deleted"] as const)(
-    "retains native checkout evidence when a hook leaves the PR lock %s",
-    (change) => {
-      const f = coldFixture(false);
-      f.git(f.canonical, "config", "--unset", "core.hooksPath");
-      const lockRef = "refs/openclaw/pr-operation-locks/42";
-      const receipt = join(f.root, "hook-lock-change.txt");
-      const hook = join(f.canonical, ".git", "hooks", "post-checkout");
-      const changeLock =
-        change === "replaced"
-          ? `replacement=$(printf 'successor-owned lock evidence\\n' | git hash-object -w --stdin) || exit 32
-git update-ref --no-deref "${lockRef}" "$replacement" "$previous" || exit 33
-printf '%s\\n' "$replacement" > "${receipt}"`
-          : `git update-ref --no-deref -d "${lockRef}" "$previous" || exit 34
-printf 'deleted\\n' > "${receipt}"`;
-      writeFileSync(
-        hook,
-        `#!/bin/sh
-previous=$(git rev-parse --verify "${lockRef}") || exit 31
-printf 'hook-owned state after lock loss\\n' > src/subject.ts
-${changeLock}
-`,
-      );
-      chmodSync(hook, 0o755);
-
-      const result = f.run("review-init");
-      expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain("PR operation lock check failed (status=1, signal=null)");
-      expectSeed(f);
-      expect(readFileSync(join(f.worktree, "src", "subject.ts"), "utf8")).toBe(
-        "hook-owned state after lock loss\n",
-      );
-      expect(f.git(f.worktree, "write-tree")).toBe(
-        f.git(f.canonical, "rev-parse", `${f.main}^{tree}`),
-      );
-      expect(f.git(f.canonical, "worktree", "list", "--porcelain")).toContain(f.worktree);
-      expect(f.git(f.canonical, "status", "--porcelain")).toBe("");
-      expect(existsSync(join(f.canonical, ".worktrees", ".templates"))).toBe(false);
-      const observed = readFileSync(receipt, "utf8").trim();
-      if (change === "replaced") {
-        expect(observed).toMatch(/^[0-9a-f]{40}$/);
-        expect(f.git(f.canonical, "rev-parse", "--verify", lockRef)).toBe(observed);
-        expect(f.git(f.canonical, "cat-file", "blob", observed)).toBe(
-          "successor-owned lock evidence",
-        );
-      } else {
-        expect(observed).toBe("deleted");
-        expect(f.git(f.canonical, "for-each-ref", "--format=%(refname)", lockRef)).toBe("");
-      }
     },
   );
 
