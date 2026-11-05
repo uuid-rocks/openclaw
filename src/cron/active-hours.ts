@@ -51,4 +51,3 @@ export function isCronWithinActiveHours(
       ? minute >= start && minute < end
       : minute >= start || minute < end;
 }
-// ci-speedup marker
