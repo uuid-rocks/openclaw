@@ -1895,7 +1895,7 @@ jobs:
         # The owned checkout below keeps this workspace when HEAD is CHECKOUT_SHA
         # and otherwise replaces it with its own GitHub fetch.
         continue-on-error: true
-        uses: useblacksmith/checkout@2b9fe87d796feea153b455ec2f3125b471a7b0e7 # v1
+        uses: uuid-rocks/checkout@6d0eb53aa335175696c04599f64cd190c03857a2 # fork: defer small-pack roll-up
         with:
           ref: &checkout_sha ${{ needs.preflight.outputs.checkout_revision }}
           fetch-depth: 1
