@@ -30,6 +30,8 @@ jobs:
           C=/tmp/m.git
           t() { local s=$(date +%s%N); "$@"; echo "TIME $(( ($(date +%s%N) - s) / 1000000 ))ms :: $*"; }
           # The post step's sync: fetch changed branch refs.
+          git -C "$C" config maintenance.auto false
+          git -C "$C" config gc.auto 0
           t git -C "$C" fetch --prune origin '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*' 2>&1 | tail -3
           echo "== after sync"; ls -la "$C/objects/pack" | awk '{print $5, $9}'; git -C "$C" count-objects -v
           # Mirror the action's keep selection: packs >= 256 MiB are kept.
