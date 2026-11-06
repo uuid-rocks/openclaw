@@ -577,7 +577,11 @@ describe("ci workflow guards", () => {
       "${{ runner.temp }}/openclaw-android-tools/android-sips-linux.sh",
     );
     expect(JSON.stringify(job)).not.toContain("secrets.");
-    expect(job.steps.filter((step: WorkflowStep) => step["continue-on-error"])).toEqual([]);
+    expect(
+      job.steps
+        .filter((step: WorkflowStep) => step["continue-on-error"])
+        .map((step: WorkflowStep) => step.uses),
+    ).toEqual(["useblacksmith/checkout@2b9fe87d796feea153b455ec2f3125b471a7b0e7"]);
     const evidence = job.steps.find((step: WorkflowStep) => step.uses === UPLOAD_ARTIFACT_V7);
     expect(evidence.if).toBe("always()");
     expect(evidence.with.path).toContain("phoneScreenshots/*.jpg");
@@ -1714,9 +1718,9 @@ AFTER_CD
     expect(job["timeout-minutes"]).toBe(115);
     expect(job.permissions).toEqual({ contents: "read" });
     expect(job.strategy).toBeUndefined();
-    expect(job.steps[0]).toEqual(jobs["build-artifacts"].steps[0]);
-    expect(job.steps[1].uses).toBe("./.ci-harness/.github/actions/setup-node-env");
-    expect(job.steps[1].with).toMatchObject({
+    expect(job.steps.slice(0, 2)).toEqual(jobs["build-artifacts"].steps.slice(0, 2));
+    expect(job.steps[2].uses).toBe("./.ci-harness/.github/actions/setup-node-env");
+    expect(job.steps[2].with).toMatchObject({
       "build-all-cache-scope": "full",
       "cache-mode": "${{ needs.preflight.outputs.cache_mode }}",
     });

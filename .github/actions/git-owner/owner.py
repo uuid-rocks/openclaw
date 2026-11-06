@@ -423,6 +423,15 @@ def resolve_ref(ref):
     return git_output(workspace, "rev-parse", ref).strip()
 
 
+def peeled_commit(rev):
+    if not os.path.isdir(os.path.join(workspace, ".git")):
+        return None
+    try:
+        return git_output(workspace, "rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}").strip()
+    except GitFailure:
+        return None
+
+
 def checkout_selected_ref():
     ref = os.environ["CHECKOUT_REF"]
     fallback = os.environ["CHECKOUT_FALLBACK_REF"]
@@ -556,16 +565,20 @@ def checkout():
         for commit in prerequisites
     ):
         raise ValueError("Invalid immutable test prerequisite commits")
-    if reset:
+    # The preceding useblacksmith/checkout step leaves CHECKOUT_SHA checked out
+    # with its Git mirror as an alternate object store; keep that workspace.
+    reused = kind in ("linux-node", "android") and peeled_commit("HEAD") == os.environ["CHECKOUT_SHA"]
+    if reset and not reused:
         os.makedirs(workspace, exist_ok=True)
         # Every earlier Git group has been drained before deleting its workspace.
         subprocess.run(["find", workspace, "-mindepth", "1", "-maxdepth", "1",
                         "-exec", "rm", "-rf", "{}", "+"], check=True)
-    run_git(workspace, "init", workspace)
+    if not reused:
+        run_git(workspace, "init", workspace)
     if kind in ("linux-node", "android"):
         run_git(workspace, "config", "--global", "--add", "safe.directory", workspace)
     run_git(workspace, "config", "gc.auto", "0")
-    run_git(workspace, "remote", "add", "origin", remote)
+    run_git(workspace, "remote", "set-url" if reused else "add", "origin", remote)
     if kind in ("preflight", "manual"):
         checkout_selected_ref()
         if kind == "preflight" and resolve_ref("HEAD") == os.environ["WORKFLOW_SHA"]:
@@ -573,15 +586,25 @@ def checkout():
         return
     target = "refs/remotes/origin/ci-target" if kind in ("linux-node", "android") else "refs/remotes/origin/checkout"
     sha = "refs/heads/main" if kind == "clawhub" else os.environ["CHECKOUT_SHA"]
-    refs = [f"+{sha}:{target}"]
+    wanted = {target: sha}
     base = os.environ.get("CHECKOUT_BASE_SHA") if kind == "linux-node" else None
     if base:
-        refs.append(f"+{base}:refs/remotes/origin/ci-ratchet-base")
+        wanted["refs/remotes/origin/ci-ratchet-base"] = base
     # Fetch full reader objects with the authenticated checkout, before its
     # credential scope ends and test workers create historical worktrees.
-    refs.extend(prerequisites)
-    fetch(workspace, *refs, prune=True, max_attempts=1 if reset else 3,
-          retry_codes=(124, 137) if kind == "skills" else ())
+    wanted.update((commit, commit) for commit in prerequisites)
+    if reused:
+        # A shallow fetch walks every mirror ref even when nothing transfers;
+        # mirror commits are complete, so only point refs at them.
+        for ref, commit in list(wanted.items()):
+            if peeled_commit(commit):
+                if ref != commit:
+                    run_git(workspace, "update-ref", ref, commit)
+                del wanted[ref]
+    refs = [commit if ref == commit else f"+{commit}:{ref}" for ref, commit in wanted.items()]
+    if refs:
+        fetch(workspace, *refs, prune=True, max_attempts=1 if reset else 3,
+              retry_codes=(124, 137) if kind == "skills" else ())
     run_git(workspace, "checkout", *(["--force"] if reset else []), "--detach",
             sha if kind in ("linux-node", "android") else target)
     if kind == "android":
