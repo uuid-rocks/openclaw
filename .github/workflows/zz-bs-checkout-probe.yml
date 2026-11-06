@@ -1,59 +1,46 @@
-# FORK-ONLY measurement harness: useblacksmith/checkout vs the Git seed on a
-# target 1155 upstream commits ahead of both caches.
-name: zz-bs-checkout-probe
+name: zz bs checkout probe
 on:
   push:
     branches: [bs-checkout-probe]
 permissions:
   contents: read
 jobs:
-  stale-mirror:
+  repack-profile:
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 30
     steps:
-      - name: Blacksmith checkout
-        uses: useblacksmith/checkout@2b9fe87d796feea153b455ec2f3125b471a7b0e7 # v1
+      - uses: useblacksmith/checkout@2b9fe87d796feea153b455ec2f3125b471a7b0e7
         with:
-          ref: probe-upstream-tip
-          fetch-depth: 2
-      - run: git log --oneline -1; du -sh .git
-  after-refresh:
-    needs: stale-mirror
-    strategy:
-      matrix:
-        i: [1, 2, 3]
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    steps:
-      - name: Blacksmith checkout
-        uses: useblacksmith/checkout@2b9fe87d796feea153b455ec2f3125b471a7b0e7 # v1
-        with:
-          ref: probe-upstream-tip
-          fetch-depth: 2
-      - run: git log --oneline -1
-  stale-seed:
-    strategy:
-      matrix:
-        i: [1, 2, 3]
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    steps:
-      - name: Restore Git object seed
-        id: seed
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ runner.temp }}/openclaw-git-seed
-          key: openclaw-git-seed-v1-${{ runner.os }}-${{ runner.arch }}-
-          restore-keys: openclaw-git-seed-v1-${{ runner.os }}-${{ runner.arch }}-
-      - name: Seeded checkout
+          fetch-depth: 1
+          persist-credentials: false
+          show-progress: false
+      - name: Profile mirror maintenance on a copy
+        shell: bash
         run: |
           set -euo pipefail
-          seed="$RUNNER_TEMP/openclaw-git-seed"
-          echo "seed key: ${{ steps.seed.outputs.cache-matched-key }} commit $(cat "$seed/commit")"
-          git init -q "$GITHUB_WORKSPACE/ws"; cd "$GITHUB_WORKSPACE/ws"
-          git remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
-          for f in "$seed"/pack/pack-*.pack "$seed"/pack/pack-*.rev "$seed"/pack/pack-*.idx; do [ -e "$f" ] && mv "$f" .git/objects/pack/; done
-          commit=$(cat "$seed/commit"); echo "$commit" >> .git/shallow; git update-ref refs/ci-seed "$commit"
-          s=$(date +%s.%N)
-          git -c protocol.version=2 fetch -q --no-tags --no-recurse-submodules --depth=2 origin +refs/heads/probe-upstream-tip:refs/remotes/origin/checkout
-          f=$(date +%s.%N)
-          git update-ref -d refs/ci-seed; git checkout -q --detach refs/remotes/origin/checkout
-          c=$(date +%s.%N)
-          printf 'fetch=%.1fs checkout=%.1fs\n' "$(echo "$f-$s"|bc)" "$(echo "$c-$f"|bc)"
+          M=/blacksmith-git-mirror/uuid-rocks/openclaw/v1/uuid-rocks-openclaw.git
+          git --version
+          nproc; free -g | head -2
+          echo "== pack dir"; ls -la "$M/objects/pack" | awk '{print $5, $9}'
+          echo "== count-objects"; git -C "$M" count-objects -vH
+          echo "== refs"; git -C "$M" for-each-ref | wc -l
+          echo "== config"; git -C "$M" config --list --local
+          du -sh "$M"
+          start=$(date +%s); sudo cp -a "$M" /tmp/m.git; sudo chown -R "$(id -u):$(id -g)" /tmp/m.git; echo "copy $(( $(date +%s) - start ))s"
+          C=/tmp/m.git
+          t() { local s=$(date +%s%N); "$@"; echo "TIME $(( ($(date +%s%N) - s) / 1000000 ))ms :: $*"; }
+          # The post step's sync: fetch changed branch refs.
+          t git -C "$C" fetch --prune origin '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*' 2>&1 | tail -3
+          echo "== after sync"; ls -la "$C/objects/pack" | awk '{print $5, $9}'; git -C "$C" count-objects -v
+          # Mirror the action's keep selection: packs >= 256 MiB are kept.
+          for p in "$C"/objects/pack/pack-*.pack; do
+            if [ "$(stat -c %s "$p")" -ge $((256*1024*1024)) ]; then : > "${p%.pack}.keep"; fi
+          done
+          cp -a "$C" /tmp/m2.git
+          GIT_TRACE2_PERF=/tmp/perf.txt t timeout 120 git -c repack.writeBitmaps=false -C "$C" repack -d -l -n --geometric=2
+          echo "== top trace2 regions"
+          grep -E "region_leave|child_exit|exit" /tmp/perf.txt | awk -F'|' '{gsub(/ /,"",$6); print $6, $0}' | sort -rn | head -25 | cut -c1-260
+          echo "== after repack"; ls -la "$C/objects/pack" | awk '{print $5, $9}'
+          # Same state, packing only loose objects into a new pack.
+          t git -C /tmp/m2.git repack -d -l -n 2>&1 | tail -2
+          echo "== after loose-only repack"; ls -la /tmp/m2.git/objects/pack | awk '{print $5, $9}'
