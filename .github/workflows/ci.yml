@@ -732,6 +732,15 @@ jobs:
               return git_output(workspace, "rev-parse", ref).strip()
 
 
+          def peeled_commit(rev):
+              if not os.path.isdir(os.path.join(workspace, ".git")):
+                  return None
+              try:
+                  return git_output(workspace, "rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}").strip()
+              except GitFailure:
+                  return None
+
+
           def checkout_selected_ref():
               ref = os.environ["CHECKOUT_REF"]
               fallback = os.environ["CHECKOUT_FALLBACK_REF"]
@@ -865,16 +874,20 @@ jobs:
                   for commit in prerequisites
               ):
                   raise ValueError("Invalid immutable test prerequisite commits")
-              if reset:
+              # The preceding useblacksmith/checkout step leaves CHECKOUT_SHA checked out
+              # with its Git mirror as an alternate object store; keep that workspace.
+              reused = kind in ("linux-node", "android") and peeled_commit("HEAD") == os.environ["CHECKOUT_SHA"]
+              if reset and not reused:
                   os.makedirs(workspace, exist_ok=True)
                   # Every earlier Git group has been drained before deleting its workspace.
                   subprocess.run(["find", workspace, "-mindepth", "1", "-maxdepth", "1",
                                   "-exec", "rm", "-rf", "{}", "+"], check=True)
-              run_git(workspace, "init", workspace)
+              if not reused:
+                  run_git(workspace, "init", workspace)
               if kind in ("linux-node", "android"):
                   run_git(workspace, "config", "--global", "--add", "safe.directory", workspace)
               run_git(workspace, "config", "gc.auto", "0")
-              run_git(workspace, "remote", "add", "origin", remote)
+              run_git(workspace, "remote", "set-url" if reused else "add", "origin", remote)
               if kind in ("preflight", "manual"):
                   checkout_selected_ref()
                   if kind == "preflight" and resolve_ref("HEAD") == os.environ["WORKFLOW_SHA"]:
@@ -882,15 +895,25 @@ jobs:
                   return
               target = "refs/remotes/origin/ci-target" if kind in ("linux-node", "android") else "refs/remotes/origin/checkout"
               sha = "refs/heads/main" if kind == "clawhub" else os.environ["CHECKOUT_SHA"]
-              refs = [f"+{sha}:{target}"]
+              wanted = {target: sha}
               base = os.environ.get("CHECKOUT_BASE_SHA") if kind == "linux-node" else None
               if base:
-                  refs.append(f"+{base}:refs/remotes/origin/ci-ratchet-base")
+                  wanted["refs/remotes/origin/ci-ratchet-base"] = base
               # Fetch full reader objects with the authenticated checkout, before its
               # credential scope ends and test workers create historical worktrees.
-              refs.extend(prerequisites)
-              fetch(workspace, *refs, prune=True, max_attempts=1 if reset else 3,
-                    retry_codes=(124, 137) if kind == "skills" else ())
+              wanted.update((commit, commit) for commit in prerequisites)
+              if reused:
+                  # A shallow fetch walks every mirror ref even when nothing transfers;
+                  # mirror commits are complete, so only point refs at them.
+                  for ref, commit in list(wanted.items()):
+                      if peeled_commit(commit):
+                          if ref != commit:
+                              run_git(workspace, "update-ref", ref, commit)
+                          del wanted[ref]
+              refs = [commit if ref == commit else f"+{commit}:{ref}" for ref, commit in wanted.items()]
+              if refs:
+                  fetch(workspace, *refs, prune=True, max_attempts=1 if reset else 3,
+                        retry_codes=(124, 137) if kind == "skills" else ())
               run_git(workspace, "checkout", *(["--force"] if reset else []), "--detach",
                       sha if kind in ("linux-node", "android") else target)
               if kind == "android":
@@ -1867,13 +1890,26 @@ jobs:
     # The cold Boat qualification took 20m43s; retain its 35m budget on a main shape.
     timeout-minutes: ${{ (needs.preflight.outputs.boat_build_qualification == 'true' || ((needs.preflight.outputs.ci_qualification == 'true' && (github.run_attempt == 1 && needs.preflight.outputs.qualification_runner_backend || 'github') || vars.OPENCLAW_CI_RUNNER_BACKEND) == 'github' || (contains(fromJSON('["hybrid","runson"]'), (needs.preflight.outputs.ci_qualification == 'true' && (github.run_attempt == 1 && needs.preflight.outputs.qualification_runner_backend || 'github') || vars.OPENCLAW_CI_RUNNER_BACKEND)) && github.run_attempt > 1) || (github.event_name == 'workflow_dispatch' && needs.preflight.outputs.ci_shape != 'main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository))) && 35 || 20 }}
     steps:
+      - &blacksmith_checkout_step
+        name: Checkout from Blacksmith Git mirror
+        if: ${{ false }}
+        # The owned checkout below keeps this workspace when HEAD is CHECKOUT_SHA
+        # and otherwise replaces it with its own GitHub fetch.
+        continue-on-error: true
+        uses: useblacksmith/checkout@2b9fe87d796feea153b455ec2f3125b471a7b0e7 # v1
+        with:
+          ref: &checkout_sha ${{ needs.preflight.outputs.checkout_revision }}
+          fetch-depth: 1
+          fetch-tags: false
+          persist-credentials: false
+          show-progress: false
       - &linux_node_checkout_step
         name: Checkout
         shell: bash
         env:
           CHECKOUT_REPO: ${{ github.repository }}
           CHECKOUT_TOKEN: ${{ github.token }}
-          CHECKOUT_SHA: &checkout_sha ${{ needs.preflight.outputs.checkout_revision }}
+          CHECKOUT_SHA: *checkout_sha
           WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: *owned_checkout_run
       - name: Setup Node environment
@@ -2489,6 +2525,7 @@ jobs:
       CHECKOUT_BASE_SHA: &ci_diff_base ${{ needs.preflight.outputs.diff_base_revision }}
       COMPATIBILITY_TARGET: &historical_target ${{ needs.preflight.outputs.compatibility_target }}
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
       - &linux_node_setup_step
         name: Setup Node environment
@@ -2520,6 +2557,7 @@ jobs:
     runs-on: *shared_small_linux_runner
     timeout-minutes: 10
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
 
       - *linux_node_setup_step
@@ -2564,6 +2602,7 @@ jobs:
     env:
       COMPATIBILITY_TARGET: *historical_target
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
       - name: Setup Node environment
         id: node_setup
@@ -2652,6 +2691,7 @@ jobs:
       max-parallel: 14
       matrix: ${{ fromJson(needs.preflight.outputs.ui_e2e_matrix) }}
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env
@@ -2840,6 +2880,7 @@ jobs:
       max-parallel: 2
       matrix: ${{ fromJson(needs.preflight.outputs.ui_real_gateway_matrix) }}
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
       - name: Setup Node environment
         id: node_setup
@@ -3038,6 +3079,7 @@ jobs:
     env:
       COMPATIBILITY_TARGET: *historical_target
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
       - name: Setup Node environment
         id: node_setup
@@ -3069,6 +3111,7 @@ jobs:
     env:
       CHECKOUT_BASE_SHA: *ci_diff_base
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
       - name: Prepare release-gate ratchet merge tree
         if: github.event_name == 'workflow_dispatch' && inputs.release_gate
@@ -3199,6 +3242,7 @@ jobs:
     env:
       CHECKOUT_BASE_SHA: ${{ (matrix.task == 'startup-corpus' || matrix.task == 'bundled-protocol' || startsWith(matrix.task, 'release-lint-')) && needs.preflight.outputs.diff_base_revision || '' }}
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
       - name: Smoke test trusted Git owner action
         id: git_owner_smoke
@@ -3377,6 +3421,7 @@ jobs:
       max-parallel: ${{ (needs.preflight.outputs.runner_profile == 'github' || needs.preflight.outputs.runner_profile == 'hybrid') && 6 || 4 }}
       matrix: ${{ fromJson(needs.preflight.outputs.qa_smoke_ci_matrix) }}
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env
@@ -3556,6 +3601,7 @@ jobs:
       max-parallel: 12
       matrix: ${{ fromJson(needs.preflight.outputs.plugin_contracts_matrix) }}
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
       - &contract_node_setup_step
         name: Setup Node environment
@@ -3618,6 +3664,7 @@ jobs:
       max-parallel: 12
       matrix: ${{ fromJson(needs.preflight.outputs.channel_contracts_matrix) }}
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
       - *contract_node_setup_step
 
@@ -3637,6 +3684,7 @@ jobs:
     runs-on: *shared_small_linux_runner
     timeout-minutes: 60
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env
@@ -3681,6 +3729,7 @@ jobs:
       max-parallel: ${{ github.event_name == 'pull_request' && github.repository == 'uuid-rocks/openclaw' && github.run_attempt == 1 && needs.preflight.outputs.frozen_target != 'true' && contains(fromJSON('["blacksmith","hybrid"]'), needs.preflight.outputs.node_runner_backend) && contains(fromJSON('["","blacksmith","hybrid"]'), vars.OPENCLAW_CI_RUNNER_BACKEND) && 130 || 96 }}
       matrix: ${{ fromJson(needs.preflight.outputs.checks_node_core_nondist_matrix) }}
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
       - name: Initialize RunsOn
         if: matrix.runner == 'runson-c8i-8xlarge' && runner.environment == 'self-hosted'
@@ -3956,6 +4005,7 @@ jobs:
       run_lint_extensions: ${{ steps.plan.outputs.run_lint_extensions }}
       run_changed_core_type_stripes: ${{ steps.plan.outputs.run_changed_core_type_stripes }}
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
       - name: Ensure extension lint comparison base
         if: github.event_name == 'pull_request' && contains(fromJSON('["affected","full"]'), fromJSON(needs.preflight.outputs.check_plan_input_json).extensionLintMode)
@@ -4001,6 +4051,7 @@ jobs:
       max-parallel: 12
       matrix: ${{ fromJSON((needs.preflight.outputs.run_check_plan == 'true' && needs.check-plan.outputs.check_matrix || needs.preflight.outputs.check_matrix)) }}
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
       - name: Check npm lock scope before setup
         id: npm-lock-scope
@@ -4400,6 +4451,7 @@ jobs:
       max-parallel: 5
       matrix: ${{ fromJSON((needs.preflight.outputs.run_check_plan == 'true' && needs.check-plan.outputs.lint_core_matrix || needs.preflight.outputs.lint_core_matrix)) }}
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
       - &semantic_node_setup_step
         name: Setup Node environment
@@ -4506,6 +4558,7 @@ jobs:
       max-parallel: 6
       matrix: ${{ fromJSON((needs.preflight.outputs.run_check_plan == 'true' && needs.check-plan.outputs.lint_extension_matrix || needs.preflight.outputs.lint_extension_matrix)) }}
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
       - &plain_node_setup_step
         name: Setup Node environment
@@ -4562,6 +4615,7 @@ jobs:
       max-parallel: 5
       matrix: ${{ fromJSON((needs.preflight.outputs.run_check_plan == 'true' && needs.check-plan.outputs.core_type_matrix || needs.preflight.outputs.core_type_matrix)) }}
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
       - *semantic_node_setup_step
 
@@ -4623,6 +4677,7 @@ jobs:
       max-parallel: 12
       matrix: ${{ fromJSON(needs.preflight.outputs.check_additional_matrix) }}
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
       - name: Ensure additional check comparison base
         if: (matrix.group == 'extension-package-boundary' && github.event_name == 'pull_request') || (matrix.group == 'plugin-sdk-api-diff' && github.event_name == 'workflow_dispatch')
@@ -4730,6 +4785,7 @@ jobs:
     outputs:
       artifact_id: ${{ steps.publish-sdk.outputs.artifact-id }}
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
       - name: Ensure boundary comparison base
         uses: ./.ci-harness/.github/actions/ensure-base-commit
@@ -4775,6 +4831,7 @@ jobs:
       matrix:
         shard: [1/3, 2/3, 3/3]
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
       - *linux_node_setup_step
       - name: Run PostgreSQL conformance
@@ -4792,6 +4849,7 @@ jobs:
     runs-on: *ubuntu_linux_runner
     timeout-minutes: 20
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
       - *linux_node_setup_step
 
@@ -6325,6 +6383,7 @@ jobs:
     runs-on: *ubuntu_linux_runner
     timeout-minutes: 10
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
 
       - name: Setup screenshot evidence Node
@@ -6407,6 +6466,7 @@ jobs:
       max-parallel: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && github.event_name != 'workflow_dispatch' && github.event_name != 'schedule' && github.repository == 'uuid-rocks/openclaw' && github.run_attempt == 1 && 4 || 2 }}
       matrix: ${{ fromJson(needs.preflight.outputs.android_matrix) }}
     steps:
+      - *blacksmith_checkout_step
       - &android_checkout_step
         name: Checkout
         shell: bash
@@ -6618,6 +6678,7 @@ jobs:
     runs-on: *ubuntu_linux_runner
     timeout-minutes: 90
     steps:
+      - *blacksmith_checkout_step
       - *android_checkout_step
       - *android_toolchain_checkout_step
 
@@ -6688,6 +6749,7 @@ jobs:
           - page-size: 16384
             image: google_apis_ps16k
     steps:
+      - *blacksmith_checkout_step
       - *android_checkout_step
 
       - *android_toolchain_checkout_step
@@ -6867,6 +6929,7 @@ jobs:
     # Hosted six-lane budget: 6810s (run 36506671071); 60m cancelled run 36486786689.
     timeout-minutes: 115
     steps:
+      - *blacksmith_checkout_step
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env
