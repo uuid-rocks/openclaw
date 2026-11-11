@@ -1,7 +1,7 @@
 name: zz repack probe
 on:
   push:
-    branches: [repack-probe-1, repack-probe-30]
+    branches: [repack-probe-seed, repack-probe-1, repack-probe-30]
 permissions:
   contents: read
 jobs:
@@ -22,6 +22,7 @@ jobs:
           persist-credentials: false
           show-progress: false
       - name: Prepare roll-up on sticky disk
+        if: github.ref_name != 'repack-probe-seed'
         shell: bash
         run: |
           set -euo pipefail
@@ -30,8 +31,9 @@ jobs:
             for p in "$1"/objects/pack/pack-*.pack; do
               [ "$(stat -c %s "$p")" -ge $((256*1024*1024)) ] && : > "${p%.pack}.keep"
             done
-            # Two one-blob packs: equal sizes break the geometric progression, so the repack must fold.
-            for i in 1 2; do echo "probe $i $RANDOM $(date +%s%N)" | git -C "$1" hash-object -w --stdin | git -C "$1" pack-objects -q "$1/objects/pack/pack" >/dev/null; done
+            # Two one-commit packs on top of the checked-out commit, as a sync leaves; equal sizes make the repack fold them.
+            tip=$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)
+            for i in 1 2; do c=$(git -C "$1" commit-tree "$tip^{tree}" -p "$tip" -m "probe $i $RANDOM $(date +%s%N)"); echo "$c" | git -C "$1" pack-objects -q "$1/objects/pack/pack" >/dev/null; git -C "$1" update-ref "refs/heads/zz-probe-$i" "$c"; done
             find "$1/objects" -maxdepth 1 -type d -name '??' -exec rm -rf {} +
             echo "packs=$(ls "$1"/objects/pack/*.pack | wc -l) keeps=$(ls "$1"/objects/pack/*.keep 2>/dev/null | wc -l) size=$(du -sh "$1/objects/pack" | cut -f1)"
           }
@@ -41,6 +43,7 @@ jobs:
           nproc; free -g | sed -n 2p; findmnt -no SOURCE,FSTYPE "$(dirname "$(dirname "$(dirname "$M")")")" || true
           findmnt -no SOURCE,FSTYPE / || true
       - name: Repack sticky disk, cold cache
+        if: github.ref_name != 'repack-probe-seed'
         shell: bash
         run: |
           sync; echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null
@@ -48,22 +51,26 @@ jobs:
           echo "PROBE sticky_cold start=$s end=$e ms=$((e-s))"
           grep -E 'region_leave' /tmp/perf-cold.txt | awk -F'|' '{print $6, $9, $10}' | sort -k1 -rn | head -6
       - name: Repack sticky disk, warm cache
+        if: github.ref_name != 'repack-probe-seed'
         shell: bash
         run: |
           source /tmp/prep.sh; prep "$M" >/dev/null
           s=$(date +%s%3N); git -c repack.writeBitmaps=false -C "$M" repack -d -l -n --geometric=2; e=$(date +%s%3N)
           echo "PROBE sticky_warm start=$s end=$e ms=$((e-s))"
       - name: Copy mirror to local disk
+        if: github.ref_name != 'repack-probe-seed'
         shell: bash
         run: |
           s=$(date +%s%3N); cp -a "$M" /tmp/m.git; e=$(date +%s%3N)
           echo "PROBE copy start=$s end=$e ms=$((e-s))"
           source /tmp/prep.sh; prep /tmp/m.git
       - name: Repack local disk, cold cache
+        if: github.ref_name != 'repack-probe-seed'
         shell: bash
         run: |
           sync; echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null
           s=$(date +%s%3N); git -c repack.writeBitmaps=false -C /tmp/m.git repack -d -l -n --geometric=2; e=$(date +%s%3N)
           echo "PROBE local_cold start=$s end=$e ms=$((e-s))"
       - name: Fail so the post step does not commit the mirror
+        if: github.ref_name != 'repack-probe-seed'
         run: exit 1
