@@ -14,6 +14,10 @@ jobs:
         n: ${{ fromJSON(github.ref_name == 'repack-probe-30' && '[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]' || '[1]') }}
     env:
       M: /blacksmith-git-mirror/uuid-rocks/openclaw/v1/uuid-rocks-openclaw.git
+      GIT_AUTHOR_NAME: probe
+      GIT_AUTHOR_EMAIL: probe@example.invalid
+      GIT_COMMITTER_NAME: probe
+      GIT_COMMITTER_EMAIL: probe@example.invalid
     steps:
       - name: Checkout from Blacksmith Git mirror
         uses: useblacksmith/checkout@2b9fe87d796feea153b455ec2f3125b471a7b0e7
@@ -32,7 +36,7 @@ jobs:
               if [ "$(stat -c %s "$p")" -ge $((256*1024*1024)) ]; then : > "${p%.pack}.keep"; fi
             done
             # Two one-commit packs on top of the checked-out commit, as a sync leaves; equal sizes make the repack fold them.
-            tip=$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)
+            tip=$(git -C "$1" rev-parse HEAD)
             for i in 1 2; do c=$(git -C "$1" commit-tree "$tip^{tree}" -p "$tip" -m "probe $i $RANDOM $(date +%s%N)"); echo "$c" | git -C "$1" pack-objects -q "$1/objects/pack/pack" >/dev/null; git -C "$1" update-ref "refs/heads/zz-probe-$i" "$c"; done
             find "$1/objects" -maxdepth 1 -type d -name '??' -exec rm -rf {} +
             echo "packs=$(ls "$1"/objects/pack/*.pack | wc -l) keeps=$(ls "$1"/objects/pack/*.keep 2>/dev/null | wc -l) size=$(du -sh "$1/objects/pack" | cut -f1)"
